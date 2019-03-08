@@ -33,7 +33,7 @@ if [ $# -gt 2 ]; then
         cloud=$3
 fi
 
-echo "being to run integration test on $cloud ..."
+echo "begin to run integration test on $cloud ..."
 
 # run CSI driver as a background service
 _output/azurediskplugin --endpoint $endpoint --nodeid CSINode -v=5 &
