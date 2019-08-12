@@ -1,5 +1,7 @@
 # Install azuredisk CSI driver v0.3.0 on a Kubernetes cluster
 
+If you have already installed Helm, you can also use it to install azuredisk CSI driver. Please see [Installation with Helm](../charts/README.md).
+
 ## Installation with kubectl
 
 ```
