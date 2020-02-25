@@ -21,7 +21,6 @@ package azure
 import (
 	"context"
 	"fmt"
-	"path"
 	"regexp"
 	"strings"
 	"sync"
@@ -32,7 +31,6 @@ import (
 	"k8s.io/apimachinery/pkg/types"
 	kwait "k8s.io/apimachinery/pkg/util/wait"
 	cloudprovider "k8s.io/cloud-provider"
-	volerr "k8s.io/cloud-provider/volume/errors"
 	"k8s.io/klog"
 	azcache "k8s.io/legacy-cloud-providers/azure/cache"
 	"k8s.io/legacy-cloud-providers/azure/retry"
@@ -119,7 +117,7 @@ func (c *controllerCommon) getNodeVMSet(nodeName types.NodeName, crt azcache.Azu
 func (c *controllerCommon) AttachDisk(isManagedDisk bool, diskName, diskURI string, nodeName types.NodeName, cachingMode compute.CachingTypes) (int32, error) {
 	diskEncryptionSetID := ""
 	writeAcceleratorEnabled := false
-
+/*
 	if isManagedDisk {
 		diskName := path.Base(diskURI)
 		resourceGroup, err := getResourceGroupFromDiskURI(diskURI)
@@ -155,6 +153,7 @@ func (c *controllerCommon) AttachDisk(isManagedDisk bool, diskName, diskURI stri
 			}
 		}
 	}
+*/
 
 	vmset, err := c.getNodeVMSet(nodeName, azcache.CacheReadTypeUnsafe)
 	if err != nil {
