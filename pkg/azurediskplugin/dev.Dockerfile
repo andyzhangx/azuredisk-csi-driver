@@ -16,6 +16,9 @@ FROM mcr.microsoft.com/aks/fundamental/base-ubuntu:v0.0.5
 RUN apt-get update && apt-get install -y util-linux e2fsprogs mount ca-certificates udev xfsprogs
 LABEL maintainers="andyzhangx"
 LABEL description="Azure Disk CSI Driver"
+# Create a nonroot user
+RUN useradd -u 10001 nonroot
+USER nonroot
 
 COPY ./_output/azurediskplugin /azurediskplugin
 ENTRYPOINT ["/azurediskplugin"]
