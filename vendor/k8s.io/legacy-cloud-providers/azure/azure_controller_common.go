@@ -44,6 +44,9 @@ const (
 	maxStorageAccounts                     = 100 // max # is 200 (250 with special request). this allows 100 for everything else including stand alone disks
 	maxDisksPerStorageAccounts             = 60
 	storageAccountUtilizationBeforeGrowing = 0.5
+	// Disk Caching is not supported for disks 4 TiB and larger
+	// https://docs.microsoft.com/en-us/azure/virtual-machines/premium-storage-performance#disk-caching
+	diskCachingLimit = 96 // GiB
 
 	maxLUN               = 64 // max number of LUNs per VM
 	errLeaseFailed       = "AcquireDiskLeaseFailed"
@@ -156,10 +159,22 @@ func (c *controllerCommon) AttachDisk(isManagedDisk bool, diskName, diskURI stri
 			return -1, danglingErr
 		}
 
-		if disk.DiskProperties != nil && disk.DiskProperties.Encryption != nil &&
-			disk.DiskProperties.Encryption.DiskEncryptionSetID != nil {
-			diskEncryptionSetID = *disk.DiskProperties.Encryption.DiskEncryptionSetID
+		if disk.DiskProperties != nil {
+			klog.Warningf("size of disk(%s) is %dGB", diskURI, *disk.DiskProperties.DiskSizeGB)
+			if disk.DiskProperties.DiskSizeGB != nil && *disk.DiskProperties.DiskSizeGB >= diskCachingLimit {
+				// Disk Caching is not supported for disks 4 TiB and larger
+				// https://docs.microsoft.com/en-us/azure/virtual-machines/premium-storage-performance#disk-caching
+				cachingMode = compute.CachingTypesNone
+				klog.Warningf("size of disk(%s) is %dGB, bigger than limit(%dGB), set as None by default",
+					diskURI, *disk.DiskProperties.DiskSizeGB, diskCachingLimit)
+			}
+
+			if disk.DiskProperties.Encryption != nil &&
+				disk.DiskProperties.Encryption.DiskEncryptionSetID != nil {
+				diskEncryptionSetID = *disk.DiskProperties.Encryption.DiskEncryptionSetID
+			}
 		}
+
 		if v, ok := disk.Tags[WriteAcceleratorEnabled]; ok {
 			if v != nil && strings.EqualFold(*v, "true") {
 				writeAcceleratorEnabled = true
