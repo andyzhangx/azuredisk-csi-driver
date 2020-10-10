@@ -46,7 +46,7 @@ const (
 	storageAccountUtilizationBeforeGrowing = 0.5
 	// Disk Caching is not supported for disks 4 TiB and larger
 	// https://docs.microsoft.com/en-us/azure/virtual-machines/premium-storage-performance#disk-caching
-	diskCachingLimit = 96 // GiB
+	diskCachingLimit = 9 // GiB
 
 	maxLUN               = 64 // max number of LUNs per VM
 	errLeaseFailed       = "AcquireDiskLeaseFailed"
