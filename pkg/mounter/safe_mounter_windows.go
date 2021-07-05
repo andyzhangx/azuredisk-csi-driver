@@ -24,14 +24,14 @@ import (
 	"os"
 	"strings"
 
-	disk "github.com/kubernetes-csi/csi-proxy/client/api/disk/v1beta2"
-	diskclient "github.com/kubernetes-csi/csi-proxy/client/groups/disk/v1beta2"
+	disk "github.com/kubernetes-csi/csi-proxy/client/api/disk/v1"
+	diskclient "github.com/kubernetes-csi/csi-proxy/client/groups/disk/v1"
 
-	fs "github.com/kubernetes-csi/csi-proxy/client/api/filesystem/v1beta1"
-	fsclient "github.com/kubernetes-csi/csi-proxy/client/groups/filesystem/v1beta1"
+	fs "github.com/kubernetes-csi/csi-proxy/client/api/filesystem/v1"
+	fsclient "github.com/kubernetes-csi/csi-proxy/client/groups/filesystem/v1"
 
-	volume "github.com/kubernetes-csi/csi-proxy/client/api/volume/v1beta2"
-	volumeclient "github.com/kubernetes-csi/csi-proxy/client/groups/volume/v1beta2"
+	volume "github.com/kubernetes-csi/csi-proxy/client/api/volume/v1"
+	volumeclient "github.com/kubernetes-csi/csi-proxy/client/groups/volume/v1"
 
 	"k8s.io/klog/v2"
 	"k8s.io/mount-utils"
