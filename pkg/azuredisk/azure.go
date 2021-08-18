@@ -58,16 +58,25 @@ func GetCloudProvider(kubeconfig, secretName, secretNamespace, userAgent string)
 			CloudConfigKey:  "cloud-config",
 		},
 	}
+	var (
+		config     *azure.Config
+		fromSecret bool
+	)
+
 	if kubeClient != nil {
-		klog.V(2).Infof("reading cloud config from secret")
+		klog.V(2).Infof("reading cloud config from secret %s/%s", az.SecretNamespace, az.SecretName)
 		az.KubeClient = kubeClient
-		if err := az.InitializeCloudFromSecret(); err != nil {
-			klog.V(2).Infof("InitializeCloudFromSecret failed with error: %v", err)
+		config, err = az.GetConfigFromSecret()
+		if err == nil && config != nil {
+			fromSecret = true
+		}
+		if err != nil {
+			klog.Warningf("InitializeCloudFromSecret: failed to get cloud config from secret %s/%s: %v", az.SecretNamespace, az.SecretName, err)
 		}
 	}
 
-	if az.TenantID == "" || az.SubscriptionID == "" || az.ResourceGroup == "" {
-		klog.V(2).Infof("could not read cloud config from secret")
+	if config == nil {
+		klog.V(2).Infof("could not read cloud config from secret %s/%s", az.SecretNamespace, az.SecretName)
 		credFile, ok := os.LookupEnv(DefaultAzureCredentialFileEnv)
 		if ok && strings.TrimSpace(credFile) != "" {
 			klog.V(2).Infof("%s env var set as %v", DefaultAzureCredentialFileEnv, credFile)
@@ -77,20 +86,27 @@ func GetCloudProvider(kubeconfig, secretName, secretNamespace, userAgent string)
 			} else {
 				credFile = DefaultCredFilePathLinux
 			}
-
 			klog.V(2).Infof("use default %s env var: %v", DefaultAzureCredentialFileEnv, credFile)
 		}
 
-		var config *os.File
-		config, err = os.Open(credFile)
+		credFileConfig, err := os.Open(credFile)
 		if err != nil {
 			klog.Errorf("load azure config from file(%s) failed with %v", credFile, err)
 			return nil, fmt.Errorf("load azure config from file(%s) failed with %v", credFile, err)
 		}
-		defer config.Close()
+		defer credFileConfig.Close()
 
 		klog.V(2).Infof("read cloud config from file: %s successfully", credFile)
-		if az, err = azure.NewCloudWithoutFeatureGates(config, false); err != nil {
+		if config, err = azure.ParseConfig(credFileConfig); err != nil {
+			return nil, err
+		}
+	}
+
+	if config == nil {
+		return az, fmt.Errorf("cloud config file is empty")
+	} else {
+		config.UserAgent = userAgent
+		if err = az.InitializeCloudFromConfig(config, fromSecret, false); err != nil {
 			return az, err
 		}
 	}
