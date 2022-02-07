@@ -34,6 +34,7 @@ import (
 	volumehelpers "k8s.io/cloud-provider/volume/helpers"
 	"k8s.io/klog/v2"
 
+	"sigs.k8s.io/cloud-provider-azure/pkg/azureclients/diskclient"
 	"sigs.k8s.io/cloud-provider-azure/pkg/consts"
 )
 
@@ -80,6 +81,8 @@ type ManagedDiskOptions struct {
 	DiskAccessID *string
 	// BurstingEnabled - Set to true to enable bursting beyond the provisioned performance target of the disk.
 	BurstingEnabled *bool
+	// SubscrtionID - specify a different SubscrtionID
+	SubscrtionID string
 }
 
 //CreateManagedDisk : create managed disk
@@ -211,12 +214,27 @@ func (c *ManagedDiskController) CreateManagedDisk(ctx context.Context, options *
 	}
 
 	cloud := c.common.cloud
-	rerr := cloud.DisksClient.CreateOrUpdate(ctx, options.ResourceGroup, options.DiskName, model)
-	if rerr != nil {
+	disksClient := cloud.DisksClient
+
+	subscriptionID := cloud.subscriptionID
+	if options.SubscrtionID != "" && !strings.EqualFold(options.SubscrtionID, subscriptionID) {
+		if options.ResourceGroup != c.common.resourceGroup {
+			return "", fmt.Errorf("resourceGroup must be specified when subscriptionID(%s) is not empty", subscriptionID)
+		}
+		// create a new disksClient in cross subscription scenario
+		subscriptionID = options.SubscrtionID
+		klog.V(2).Infof("azureDisk - create disk(%s) under rg(%s) in subscription(%s)", options.DiskName, options.ResourceGroup, subscriptionID)
+		cloud.ClientConfig.SubscriptionID = subscriptionID
+		diskClientConfig := cloud.ClientConfig.WithRateLimiter(cloud.DiskRateLimit)
+		disksClient = diskclient.New(diskClientConfig)
+		options.SkipGetDiskOperation = true
+	}
+
+	if rerr := disksClient.CreateOrUpdate(ctx, options.ResourceGroup, options.DiskName, model); rerr != nil {
 		return "", rerr.Error()
 	}
 
-	diskID := fmt.Sprintf(managedDiskPath, cloud.subscriptionID, options.ResourceGroup, options.DiskName)
+	diskID := fmt.Sprintf(managedDiskPath, subscriptionID, options.ResourceGroup, options.DiskName)
 
 	if options.SkipGetDiskOperation {
 		klog.Warningf("azureDisk - GetDisk(%s, StorageAccountType:%s) is throttled, unable to confirm provisioningState in poll process", options.DiskName, options.StorageAccountType)

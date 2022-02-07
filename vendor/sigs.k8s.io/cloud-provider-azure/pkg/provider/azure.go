@@ -338,6 +338,7 @@ type Cloud struct {
 
 	*ManagedDiskController
 	*controllerCommon
+	ClientConfig *azclients.ClientConfig
 }
 
 func init() {
@@ -752,6 +753,7 @@ func (az *Cloud) configAzureClients(
 	multiTenantServicePrincipalToken *adal.MultiTenantServicePrincipalToken,
 	networkResourceServicePrincipalToken *adal.ServicePrincipalToken) {
 	azClientConfig := az.getAzureClientConfig(servicePrincipalToken)
+	az.ClientConfig = azClientConfig
 
 	// Prepare AzureClientConfig for all azure clients
 	interfaceClientConfig := azClientConfig.WithRateLimiter(az.Config.InterfaceRateLimit)
