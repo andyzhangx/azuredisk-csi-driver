@@ -40,6 +40,7 @@ import (
 	consts "sigs.k8s.io/azuredisk-csi-driver/pkg/azureconstants"
 	"sigs.k8s.io/azuredisk-csi-driver/pkg/azureutils"
 	volumehelper "sigs.k8s.io/azuredisk-csi-driver/pkg/util"
+	"sigs.k8s.io/cloud-provider-azure/pkg/azureclients/snapshotclient"
 	"sigs.k8s.io/cloud-provider-azure/pkg/metrics"
 	azure "sigs.k8s.io/cloud-provider-azure/pkg/provider"
 )
@@ -764,7 +765,7 @@ func (d *Driver) CreateSnapshot(ctx context.Context, req *csi.CreateSnapshotRequ
 	var customTags string
 	// set incremental snapshot as true by default
 	incremental := true
-	var resourceGroup string
+	var subsID, resourceGroup string
 	var err error
 	localCloud := d.cloud
 	location := d.cloud.Location
@@ -789,6 +790,8 @@ func (d *Driver) CreateSnapshot(ctx context.Context, req *csi.CreateSnapshotRequ
 				return nil, fmt.Errorf("create cloud with UserAgent(%s) failed with: (%s)", newUserAgent, err)
 
 			}
+		case consts.SubscriptionIDField:
+			subsID = v
 		default:
 			return nil, fmt.Errorf("AzureDisk - invalid option %s in VolumeSnapshotClass", k)
 		}
@@ -835,8 +838,14 @@ func (d *Driver) CreateSnapshot(ctx context.Context, req *csi.CreateSnapshotRequ
 	}()
 
 	klog.V(2).Infof("begin to create snapshot(%s, incremental: %v) under rg(%s)", snapshotName, incremental, resourceGroup)
-	rerr := localCloud.SnapshotsClient.CreateOrUpdate(ctx, resourceGroup, snapshotName, snapshot)
-	if rerr != nil {
+	snapshotClient := d.cloud.SnapshotsClient
+	if subsID != "" && !strings.EqualFold(subsID, d.cloud.SubscriptionID) {
+		// create a new snapshotClient in cross subscription scenario
+		snapshotClientConfig := localCloud.ClientConfig.WithRateLimiter(localCloud.SnapshotRateLimit)
+		snapshotClient = snapshotclient.New(snapshotClientConfig)
+	}
+
+	if rerr := snapshotClient.CreateOrUpdate(ctx, resourceGroup, snapshotName, snapshot); rerr != nil {
 		if strings.Contains(rerr.Error().Error(), "existing disk") {
 			return nil, status.Error(codes.AlreadyExists, fmt.Sprintf("request snapshot(%s) under rg(%s) already exists, but the SourceVolumeId is different, error details: %v", snapshotName, resourceGroup, rerr.Error()))
 		}
