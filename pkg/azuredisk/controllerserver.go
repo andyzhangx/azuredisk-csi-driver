@@ -223,6 +223,7 @@ func (d *Driver) CreateVolume(ctx context.Context, req *csi.CreateVolumeRequest)
 		MaxShares:           int32(diskParams.MaxShares),
 		PVCName:             "",
 		ResourceGroup:       diskParams.ResourceGroup,
+		SubscrtionID:        diskParams.SubscriptionID,
 		SizeGB:              requestGiB,
 		StorageAccountType:  skuName,
 		SourceResourceID:    sourceID,
@@ -822,8 +823,8 @@ func (d *Driver) CreateSnapshot(ctx context.Context, req *csi.CreateSnapshotRequ
 	snapshot := compute.Snapshot{
 		SnapshotProperties: &compute.SnapshotProperties{
 			CreationData: &compute.CreationData{
-				CreateOption: compute.DiskCreateOptionCopy,
-				SourceURI:    &sourceVolumeID,
+				CreateOption:     compute.DiskCreateOptionCopy,
+				SourceResourceID: &sourceVolumeID,
 			},
 			Incremental: &incremental,
 		},
@@ -841,6 +842,8 @@ func (d *Driver) CreateSnapshot(ctx context.Context, req *csi.CreateSnapshotRequ
 	snapshotClient := d.cloud.SnapshotsClient
 	if subsID != "" && !strings.EqualFold(subsID, d.cloud.SubscriptionID) {
 		// create a new snapshotClient in cross subscription scenario
+		klog.V(2).Infof("create snapshot(%s) under rg(%s) in subscription(%s)", snapshotName, resourceGroup, subsID)
+		localCloud.ClientConfig.SubscriptionID = subsID
 		snapshotClientConfig := localCloud.ClientConfig.WithRateLimiter(localCloud.SnapshotRateLimit)
 		snapshotClient = snapshotclient.New(snapshotClientConfig)
 	}
