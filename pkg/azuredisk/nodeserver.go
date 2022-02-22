@@ -622,7 +622,7 @@ func (d *Driver) getDevicePathWithLUN(lunStr string) (string, error) {
 	err = wait.PollImmediate(1*time.Second, 2*time.Minute, func() (bool, error) {
 		var err error
 		if newDevicePath, err = findDiskByLun(int(lun), d.ioHandler, d.mounter); err != nil {
-			return false, fmt.Errorf("azureDisk - findDiskByLun(%v) failed with error(%s)", lun, err)
+			return false, fmt.Errorf("azureDisk - findDiskByLun(%d) failed with error(%w)", lun, err)
 		}
 
 		// did we find it?
@@ -633,7 +633,7 @@ func (d *Driver) getDevicePathWithLUN(lunStr string) (string, error) {
 		return false, nil
 	})
 	if err == nil && newDevicePath == "" {
-		err = fmt.Errorf("azureDisk - findDiskByLun(%v) failed within timeout", lun)
+		err = fmt.Errorf("azureDisk - findDiskByLun(%d) failed within timeout", lun)
 	}
 	return newDevicePath, err
 }

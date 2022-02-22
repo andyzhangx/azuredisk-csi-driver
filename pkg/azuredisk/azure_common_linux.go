@@ -70,7 +70,7 @@ func getDiskLinkByDevName(io azureutils.IOHandler, devLinkPath, devName string) 
 		}
 		return "", fmt.Errorf("device name(%s) is not found under %s", devName, devLinkPath)
 	}
-	return "", fmt.Errorf("read %s error: %v", devLinkPath, err)
+	return "", fmt.Errorf("read %s error: %w", devLinkPath, err)
 }
 
 func scsiHostRescan(io azureutils.IOHandler, m *mount.SafeFormatAndMount) {

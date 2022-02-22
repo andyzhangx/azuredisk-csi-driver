@@ -127,7 +127,7 @@ func NewNodeInfo(cloud cloudprovider.Interface, nodeID string) (*NodeInfo, error
 
 	instanceType, err := instances.InstanceType(context.TODO(), types.NodeName(nodeID))
 	if err != nil {
-		return nil, fmt.Errorf("NewNodeInfo: Failed to get instance type from Azure cloud provider, nodeName: %v, error: %v", nodeID, err)
+		return nil, fmt.Errorf("NewNodeInfo: Failed to get instance type from Azure cloud provider, nodeName: %v, error: %w", nodeID, err)
 	}
 
 	zones, ok := cloud.Zones()
@@ -136,7 +136,7 @@ func NewNodeInfo(cloud cloudprovider.Interface, nodeID string) (*NodeInfo, error
 	}
 	zone, err := zones.GetZone(context.TODO())
 	if err != nil {
-		return nil, fmt.Errorf("NewNodeInfo: Failed to get zone from Azure cloud provider, nodeName: %v, error: %v", nodeID, err)
+		return nil, fmt.Errorf("NewNodeInfo: Failed to get zone from Azure cloud provider, nodeName: %v, error: %w", nodeID, err)
 	}
 
 	nodeInfo := &NodeInfo{}

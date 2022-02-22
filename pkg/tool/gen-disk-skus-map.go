@@ -248,7 +248,7 @@ func populateNodeCapabilities(sku *compute.ResourceSku, nodeInfo *optimization.N
 					bw, err := strconv.Atoi(*capability.Value)
 					nodeInfo.MaxBwMbps = bw / (1024 * 1024)
 					if err != nil {
-						return fmt.Errorf("PopulateNodeCapabilities: Failed to parse node capability %s. Error: %v", *capability.Name, err)
+						return fmt.Errorf("PopulateNodeCapabilities: Failed to parse node capability %s. Error: %w", *capability.Name, err)
 					}
 				case MaxDataDiskCountCapability:
 					nodeInfo.MaxDataDiskCount, err = strconv.Atoi(*capability.Value)
@@ -260,7 +260,7 @@ func populateNodeCapabilities(sku *compute.ResourceSku, nodeInfo *optimization.N
 			}
 
 			if err != nil {
-				return fmt.Errorf("PopulateNodeCapabilities: Failed to parse node capability %s. Error: %v", *capability.Name, err)
+				return fmt.Errorf("PopulateNodeCapabilities: Failed to parse node capability %s. Error: %w", *capability.Name, err)
 			}
 		}
 	}
@@ -308,7 +308,7 @@ func getDiskCapabilities(sku *compute.ResourceSku) (diskSku optimization.DiskSku
 			}
 
 			if err != nil {
-				return diskSku, fmt.Errorf("GetDiskCapabilities: Failed to parse disk capability %s. Error: %v", *capability.Name, err)
+				return diskSku, fmt.Errorf("GetDiskCapabilities: Failed to parse disk capability %s. Error: %w", *capability.Name, err)
 			}
 		}
 	}

@@ -52,12 +52,12 @@ func (deviceHelper *DeviceHelper) OptimizeDiskPerformance(nodeInfo *NodeInfo, de
 
 	queueDepth, nrRequests, scheduler, maxSectorsKb, readAheadKb, err := getOptimalDeviceSettings(nodeInfo, DiskSkuMap, perfProfile, accountType, diskSizeGibStr, diskIopsStr, diskBwMbpsStr)
 	if err != nil {
-		return fmt.Errorf("OptimizeDiskPerformance: Failed to get optimal settings for profile %s accountType %s device %s Error: %v", perfProfile, accountType, devicePath, err)
+		return fmt.Errorf("OptimizeDiskPerformance: Failed to get optimal settings for profile %s accountType %s device %s Error: %w", perfProfile, accountType, devicePath, err)
 	}
 
 	deviceName, err := getDeviceName(devicePath)
 	if err != nil {
-		return fmt.Errorf("OptimizeDiskPerformance: Could not get deviceName for %s. Error: %v", devicePath, err)
+		return fmt.Errorf("OptimizeDiskPerformance: Could not get deviceName for %s. Error: %w", devicePath, err)
 	}
 
 	klog.V(2).Infof("OptimizeDiskPerformance: Tuning settings for devicePath %s, deviceName %s, profile %s queueDepth %s nrRequests %s scheduler %s maxSectorsKb %s readAheadKb %s",
@@ -72,47 +72,47 @@ func (deviceHelper *DeviceHelper) OptimizeDiskPerformance(nodeInfo *NodeInfo, de
 
 	err = echoToFile(maxSectorsKb, filepath.Join(blockDeviceRootPath, deviceName, "queue/max_sectors_kb"))
 	if err != nil {
-		return fmt.Errorf("OptimizeDiskPerformance: Could not set max_sectors_kb for device %s. Error: %v", deviceName, err)
+		return fmt.Errorf("OptimizeDiskPerformance: Could not set max_sectors_kb for device %s. Error: %w", deviceName, err)
 	}
 
 	err = echoToFile(scheduler, filepath.Join(blockDeviceRootPath, deviceName, "queue/scheduler"))
 	if err != nil {
-		return fmt.Errorf("OptimizeDiskPerformance: Could not set queue/scheduler for device %s. Error: %v", deviceName, err)
+		return fmt.Errorf("OptimizeDiskPerformance: Could not set queue/scheduler for device %s. Error: %w", deviceName, err)
 	}
 
 	err = echoToFile("1", filepath.Join(blockDeviceRootPath, deviceName, "queue/iosched/fifo_batch"))
 	if err != nil {
-		return fmt.Errorf("OptimizeDiskPerformance: Could not set queue/iosched/fifo_batch for device %s. Error: %v", deviceName, err)
+		return fmt.Errorf("OptimizeDiskPerformance: Could not set queue/iosched/fifo_batch for device %s. Error: %w", deviceName, err)
 	}
 
 	err = echoToFile("1", filepath.Join(blockDeviceRootPath, deviceName, "queue/iosched/writes_starved"))
 	if err != nil {
-		return fmt.Errorf("OptimizeDiskPerformance: Could not set queue/iosched/writes_starved for device %s. Error: %v", deviceName, err)
+		return fmt.Errorf("OptimizeDiskPerformance: Could not set queue/iosched/writes_starved for device %s. Error: %w", deviceName, err)
 	}
 
 	err = echoToFile(queueDepth, filepath.Join(blockDeviceRootPath, deviceName, "device/queue_depth"))
 	if err != nil {
-		return fmt.Errorf("OptimizeDiskPerformance: Could not set queue/queue_depth for device %s. Error: %v", deviceName, err)
+		return fmt.Errorf("OptimizeDiskPerformance: Could not set queue/queue_depth for device %s. Error: %w", deviceName, err)
 	}
 
 	err = echoToFile(nrRequests, filepath.Join(blockDeviceRootPath, deviceName, "queue/nr_requests"))
 	if err != nil {
-		return fmt.Errorf("OptimizeDiskPerformance: Could not set queue/nr_requests for device %s. Error: %v", deviceName, err)
+		return fmt.Errorf("OptimizeDiskPerformance: Could not set queue/nr_requests for device %s. Error: %w", deviceName, err)
 	}
 
 	err = echoToFile(readAheadKb, filepath.Join(blockDeviceRootPath, deviceName, "queue/read_ahead_kb"))
 	if err != nil {
-		return fmt.Errorf("OptimizeDiskPerformance: Could not set queue/read_ahead_kb for device %s. Error: %v", deviceName, err)
+		return fmt.Errorf("OptimizeDiskPerformance: Could not set queue/read_ahead_kb for device %s. Error: %w", deviceName, err)
 	}
 
 	err = echoToFile("0", filepath.Join(blockDeviceRootPath, deviceName, "queue/wbt_lat_usec"))
 	if err != nil {
-		return fmt.Errorf("OptimizeDiskPerformance: Could not set queue/wbt_lat_usec for device %s. Error: %v", deviceName, err)
+		return fmt.Errorf("OptimizeDiskPerformance: Could not set queue/wbt_lat_usec for device %s. Error: %w", deviceName, err)
 	}
 
 	err = echoToFile("0", filepath.Join(blockDeviceRootPath, deviceName, "queue/rotational"))
 	if err != nil {
-		return fmt.Errorf("OptimizeDiskPerformance: Could not set queue/rotational for device %s. Error: %v", deviceName, err)
+		return fmt.Errorf("OptimizeDiskPerformance: Could not set queue/rotational for device %s. Error: %w", deviceName, err)
 	}
 
 	return err
@@ -123,7 +123,7 @@ func (deviceHelper *DeviceHelper) OptimizeDiskPerformance(nodeInfo *NodeInfo, de
 func getDeviceName(lunPath string) (deviceName string, err error) {
 	devicePath, err := filepath.EvalSymlinks(lunPath)
 	if err != nil {
-		return "", fmt.Errorf("path %s is not a symlink. Error: %v", lunPath, err)
+		return "", fmt.Errorf("path %s is not a symlink. Error: %w", lunPath, err)
 	}
 
 	return filepath.Base(devicePath), nil

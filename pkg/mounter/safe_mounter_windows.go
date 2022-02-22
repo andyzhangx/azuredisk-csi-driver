@@ -267,7 +267,7 @@ func (mounter *csiProxyMounter) FindDiskByLun(lun string) (diskNum string, err e
 func (mounter *csiProxyMounter) FormatAndMount(source string, target string, fstype string, options []string) error {
 	diskNum, err := strconv.Atoi(source)
 	if err != nil {
-		return fmt.Errorf("parse %s failed with error: %v", source, err)
+		return fmt.Errorf("parse %s failed with error: %w", source, err)
 	}
 
 	// Call PartitionDisk CSI proxy call to partition the disk and return the volume id

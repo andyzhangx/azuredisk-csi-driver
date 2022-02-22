@@ -56,9 +56,12 @@ func AssertError(actual *TestError, expected error) bool {
 		if actual.WindowsError == nil {
 			return reflect.DeepEqual(actual.DefaultError, expected)
 		}
-		return reflect.DeepEqual(actual.WindowsError, expected)
+		return actual.WindowsError.Error() == expected.Error()
 	}
-	return reflect.DeepEqual(actual.DefaultError, expected)
+	if actual.DefaultError == nil {
+		return reflect.DeepEqual(actual.DefaultError, expected)
+	}
+	return actual.DefaultError.Error() == expected.Error()
 }
 
 // GetWorkDirPath returns the path to the current working directory

@@ -1102,12 +1102,12 @@ func TestGetBlockSizeBytes(t *testing.T) {
 	testTarget, err := testutil.GetWorkDirPath("test")
 	assert.NoError(t, err)
 
-	notFoundErr := "exit status 1"
+	notFoundErr := errors.New("exit status 1")
 	// exception in darwin
 	if runtime.GOOS == "darwin" {
-		notFoundErr = "executable file not found in $PATH"
+		notFoundErr = errors.New("executable file not found in $PATH")
 	} else if runtime.GOOS == "windows" {
-		notFoundErr = "executable file not found in %PATH%"
+		notFoundErr = errors.New("executable file not found in %PATH%")
 	}
 
 	tests := []struct {
@@ -1119,8 +1119,8 @@ func TestGetBlockSizeBytes(t *testing.T) {
 			desc: "no exist path",
 			req:  "testpath",
 			expectedErr: testutil.TestError{
-				DefaultError: fmt.Errorf("error when getting size of block volume at path testpath: output: , err: %s", notFoundErr),
-				WindowsError: fmt.Errorf("error when getting size of block volume at path testpath: output: , err: %s", notFoundErr),
+				DefaultError: fmt.Errorf("error when getting size of block volume at path testpath: output: , err: %w", notFoundErr),
+				WindowsError: fmt.Errorf("error when getting size of block volume at path testpath: output: , err: %w", notFoundErr),
 			},
 		},
 		{
@@ -1128,9 +1128,9 @@ func TestGetBlockSizeBytes(t *testing.T) {
 			req:  testTarget,
 			expectedErr: testutil.TestError{
 				DefaultError: fmt.Errorf("error when getting size of block volume at path %s: "+
-					"output: , err: %s", testTarget, notFoundErr),
+					"output: , err: %w", testTarget, notFoundErr),
 				WindowsError: fmt.Errorf("error when getting size of block volume at path %s: "+
-					"output: , err: %s", testTarget, notFoundErr),
+					"output: , err: %w", testTarget, notFoundErr),
 			},
 		},
 	}
@@ -1255,7 +1255,7 @@ func TestGetDevicePathWithMountPath(t *testing.T) {
 		{
 			desc:        "Invalid device path",
 			req:         "unit-test",
-			expectedErr: fmt.Errorf("could not determine device path(unit-test), error: %v", err),
+			expectedErr: fmt.Errorf("could not determine device path(unit-test), error: %s", err),
 			// Skip negative tests on Windows because error messages from csi-proxy are not easily predictable.
 			skipOnWindows: true,
 		},
@@ -1271,7 +1271,7 @@ func TestGetDevicePathWithMountPath(t *testing.T) {
 	for _, test := range tests {
 		if !(test.skipOnDarwin && runtime.GOOS == "darwin") && !(test.skipOnWindows && runtime.GOOS == "windows") {
 			_, err := getDevicePathWithMountPath(test.req, d.getMounter())
-			if !reflect.DeepEqual(err, test.expectedErr) {
+			if test.expectedErr != nil && err.Error() != test.expectedErr.Error() {
 				t.Errorf("desc: %s\n actualErr: (%v), expectedErr: (%v)", test.desc, err, test.expectedErr)
 			}
 		}

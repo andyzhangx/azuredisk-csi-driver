@@ -196,7 +196,7 @@ func GetCloudProviderFromClient(kubeClient *clientset.Clientset, secretName, sec
 		if allowEmptyCloudConfig {
 			klog.V(2).Infof("no cloud config provided, error: %v, driver will run without cloud config", err)
 		} else {
-			return nil, fmt.Errorf("no cloud config provided, error: %v", err)
+			return nil, fmt.Errorf("no cloud config provided, error: %w", err)
 		}
 	} else {
 		// disable disk related rate limit
@@ -225,7 +225,7 @@ func GetCloudProvider(kubeConfig, secretName, secretNamespace, userAgent string,
 	if err != nil {
 		klog.Warningf("get kubeconfig(%s) failed with error: %v", kubeConfig, err)
 		if !os.IsNotExist(err) && !errors.Is(err, rest.ErrNotInCluster) {
-			return nil, fmt.Errorf("failed to get KubeClient: %v", err)
+			return nil, fmt.Errorf("failed to get KubeClient: %w", err)
 		}
 	}
 	return GetCloudProviderFromClient(kubeClient, secretName, secretNamespace, userAgent, allowEmptyCloudConfig)
@@ -325,7 +325,7 @@ func GetMaxShares(attributes map[string]string) (int, error) {
 		case consts.MaxSharesField:
 			maxShares, err := strconv.Atoi(v)
 			if err != nil {
-				return 0, fmt.Errorf("parse %s failed with error: %v", v, err)
+				return 0, fmt.Errorf("parse %s failed with error: %w", v, err)
 			}
 			if maxShares < 1 {
 				return 0, fmt.Errorf("parse %s returned with invalid value: %d", v, maxShares)
@@ -414,7 +414,7 @@ func IsValidAvailabilityZone(zone, region string) bool {
 
 func IsValidDiskURI(diskURI string) error {
 	if strings.Index(strings.ToLower(diskURI), "/subscriptions/") != 0 {
-		return fmt.Errorf("invalid DiskURI: %v, correct format: %v", diskURI, diskURISupportedManaged)
+		return fmt.Errorf("invalid DiskURI: %s, correct format: %s", diskURI, diskURISupportedManaged)
 	}
 	return nil
 }
@@ -544,7 +544,7 @@ func ParseDiskParameters(parameters map[string]string) (ManagedDiskParameters, e
 		case consts.LogicalSectorSizeField:
 			diskParams.LogicalSectorSize, err = strconv.Atoi(v)
 			if err != nil {
-				return diskParams, fmt.Errorf("parse %s failed with error: %v", v, err)
+				return diskParams, fmt.Errorf("parse %s failed with error: %w", v, err)
 			}
 		case consts.DiskNameField:
 			diskParams.DiskName = v
@@ -563,7 +563,7 @@ func ParseDiskParameters(parameters map[string]string) (ManagedDiskParameters, e
 		case consts.MaxSharesField:
 			diskParams.MaxShares, err = strconv.Atoi(v)
 			if err != nil {
-				return diskParams, fmt.Errorf("parse %s failed with error: %v", v, err)
+				return diskParams, fmt.Errorf("parse %s failed with error: %w", v, err)
 			}
 			if diskParams.MaxShares < 1 {
 				return diskParams, fmt.Errorf("parse %s returned with invalid value: %d", v, diskParams.MaxShares)

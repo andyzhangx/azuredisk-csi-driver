@@ -92,7 +92,7 @@ func GetEntriesAndNextToken(req *csi.ListSnapshotsRequest, snapshots []compute.S
 		if (req.SourceVolumeId != "" && req.SourceVolumeId == GetSourceVolumeID(&snapshots[start])) || req.SourceVolumeId == "" {
 			csiSnapshot, err := GenerateCSISnapshot(req.SourceVolumeId, &snapshots[start])
 			if err != nil {
-				return nil, fmt.Errorf("failed to generate snapshot entry: %v", err)
+				return nil, fmt.Errorf("failed to generate snapshot entry: %w", err)
 			}
 			entries = append(entries, &csi.ListSnapshotsResponse_Entry{Snapshot: csiSnapshot})
 			count++

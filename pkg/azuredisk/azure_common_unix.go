@@ -33,7 +33,7 @@ func getDevicePathWithMountPath(mountPath string, m *mount.SafeFormatAndMount) (
 	args := []string{"-o", "source", "--noheadings", "--mountpoint", mountPath}
 	output, err := m.Exec.Command("findmnt", args...).Output()
 	if err != nil {
-		return "", fmt.Errorf("could not determine device path(%s), error: %v", mountPath, err)
+		return "", fmt.Errorf("could not determine device path(%s), error: %w", mountPath, err)
 	}
 
 	devicePath := strings.TrimSpace(string(output))
@@ -47,7 +47,7 @@ func getDevicePathWithMountPath(mountPath string, m *mount.SafeFormatAndMount) (
 func getBlockSizeBytes(devicePath string, m *mount.SafeFormatAndMount) (int64, error) {
 	output, err := m.Exec.Command("blockdev", "--getsize64", devicePath).Output()
 	if err != nil {
-		return -1, fmt.Errorf("error when getting size of block volume at path %s: output: %s, err: %v", devicePath, string(output), err)
+		return -1, fmt.Errorf("error when getting size of block volume at path %s: output: %s, err: %w", devicePath, string(output), err)
 	}
 	strOut := strings.TrimSpace(string(output))
 	gotSizeBytes, err := strconv.ParseInt(strOut, 10, 64)

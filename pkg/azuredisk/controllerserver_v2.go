@@ -324,7 +324,7 @@ func (d *DriverV2) ControllerPublishVolume(ctx context.Context, req *csi.Control
 		if vmState != nil && strings.ToLower(*vmState) == "failed" {
 			klog.Warningf("VM(%q) is in failed state, update VM first", nodeName)
 			if err := d.cloud.UpdateVM(ctx, nodeName); err != nil {
-				return nil, fmt.Errorf("update instance %q failed with %v", nodeName, err)
+				return nil, fmt.Errorf("update instance %q failed with %w", nodeName, err)
 			}
 		}
 		// Volume is already attached to node.
@@ -350,7 +350,7 @@ func (d *DriverV2) ControllerPublishVolume(ctx context.Context, req *csi.Control
 			}
 			if err != nil {
 				klog.Errorf("Attach volume %q to instance %q failed with %v", diskURI, nodeName, err)
-				return nil, fmt.Errorf("Attach volume %q to instance %q failed with %v", diskURI, nodeName, err)
+				return nil, fmt.Errorf("Attach volume %q to instance %q failed with %w", diskURI, nodeName, err)
 			}
 		}
 		klog.V(2).Infof("attach volume %q to node %q successfully", diskURI, nodeName)

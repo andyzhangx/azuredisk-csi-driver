@@ -709,7 +709,7 @@ func TestControllerPublishVolume(t *testing.T) {
 				mockVMsClient.EXPECT().Update(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(&retry.Error{RawError: fmt.Errorf("error")}).AnyTimes()
 				expectedErr := fmt.Errorf("update instance \"unit-test-node\" failed with Retriable: false, RetryAfter: 0s, HTTPStatusCode: 0, RawError: error")
 				_, err := d.ControllerPublishVolume(context.Background(), req)
-				if !reflect.DeepEqual(err, expectedErr) {
+				if err.Error() != expectedErr.Error() {
 					t.Errorf("actualErr: (%v), expectedErr: (%v)", err, expectedErr)
 				}
 			},
@@ -1457,7 +1457,7 @@ func TestListSnapshots(t *testing.T) {
 				mockSnapshotClient.EXPECT().ListByResourceGroup(gomock.Any(), gomock.Any(), gomock.Any()).Return(snapshots, nil).AnyTimes()
 				expectedErr := fmt.Errorf("failed to generate snapshot entry: snapshot property is nil")
 				_, err := d.ListSnapshots(context.TODO(), &req)
-				if !reflect.DeepEqual(err, expectedErr) {
+				if err.Error() != expectedErr.Error() {
 					t.Errorf("actualErr: (%v), expectedErr: (%v)", err, expectedErr)
 				}
 			},
