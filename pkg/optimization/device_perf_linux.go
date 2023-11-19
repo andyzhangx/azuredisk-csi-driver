@@ -160,7 +160,7 @@ func echoToFile(content, filePath string) (err error) {
 }
 
 func getOptimalDeviceSettings(nodeInfo *NodeInfo, diskSkus map[string]map[string]DiskSkuInfo, perfProfile, accountType, diskSizeGibStr, diskIopsStr, diskBwMbpsStr string) (queueDepth, nrRequests, scheduler, maxSectorsKb, readAheadKb string, err error) {
-	klog.V(12).Infof("Calculating perf optimizations for rofile %s accountType %s diskSize", perfProfile, accountType, diskSizeGibStr)
+	klog.V(12).Infof("Calculating perf optimizations for rofile %s accountType %s diskSize %s", perfProfile, accountType, diskSizeGibStr)
 	iopsHeadRoom := .25
 	maxHwSectorsKb := 512.0
 

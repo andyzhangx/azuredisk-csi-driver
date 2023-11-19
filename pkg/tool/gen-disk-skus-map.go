@@ -136,7 +136,7 @@ import (
 			}
 			diskSkuInfoMap[account][diskSize], err = getDiskCapabilities(&sku)
 			if err != nil {
-				klog.Errorf("populateSkuMap: Failed to get disk capabilities for disk %s %s %s. Error: %v", sku.Name, sku.Size, sku.Tier, err)
+				klog.Errorf("populateSkuMap: Failed to get disk capabilities for disk %s %s %s. Error: %v", *sku.Name, *sku.Size, *sku.Tier, err)
 				os.Exit(1)
 			}
 		} else if resType == "virtualmachines" {
