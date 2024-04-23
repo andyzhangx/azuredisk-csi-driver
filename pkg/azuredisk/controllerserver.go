@@ -172,40 +172,14 @@ func (d *Driver) CreateVolume(ctx context.Context, req *csi.CreateVolumeRequest)
 		return nil, status.Error(codes.InvalidArgument, err.Error())
 	}
 
-	requirement := req.GetAccessibilityRequirements()
-	diskZone := azureutils.PickAvailabilityZone(requirement, diskParams.Location, topologyKey)
+	diskZone := azureutils.PickAvailabilityZone(req.GetAccessibilityRequirements(), diskParams.Location, topologyKey)
 	accessibleTopology := []*csi.Topology{}
-	if strings.HasSuffix(string(skuName), "ZRS") || strings.HasSuffix(string(skuName), "zrs") {
-		klog.V(2).Infof("diskZone(%s) is reset as empty since disk(%s) is ZRS(%s)", diskZone, diskParams.DiskName, skuName)
-		diskZone = ""
-		// make volume scheduled on all 3 availability zones
-		for i := 1; i <= 3; i++ {
-			topology := &csi.Topology{
-				Segments: map[string]string{topologyKey: fmt.Sprintf("%s-%d", diskParams.Location, i)},
-			}
-			accessibleTopology = append(accessibleTopology, topology)
-		}
-		// make volume scheduled on all non-zone nodes
-		topology := &csi.Topology{
-			Segments: map[string]string{topologyKey: ""},
-		}
-		accessibleTopology = append(accessibleTopology, topology)
-	} else {
-		accessibleTopology = []*csi.Topology{
-			{
-				Segments: map[string]string{topologyKey: diskZone},
-			},
-		}
-	}
 
 	if d.enableDiskCapacityCheck {
 		if ok, err := d.checkDiskCapacity(ctx, diskParams.SubscriptionID, diskParams.ResourceGroup, diskParams.DiskName, requestGiB); !ok {
 			return nil, err
 		}
 	}
-
-	klog.V(2).Infof("begin to create azure disk(%s) account type(%s) rg(%s) location(%s) size(%d) diskZone(%v) maxShares(%d)",
-		diskParams.DiskName, skuName, diskParams.ResourceGroup, diskParams.Location, requestGiB, diskZone, diskParams.MaxShares)
 
 	contentSource := &csi.VolumeContentSource{}
 

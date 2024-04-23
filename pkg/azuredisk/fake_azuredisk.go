@@ -67,7 +67,7 @@ var (
 type FakeDriver interface {
 	CSIDriver
 
-	GetSourceDiskSize(ctx context.Context, subsID, resourceGroup, diskName string, curDepth, maxDepth int) (*int32, error)
+	GetSourceDiskSize(ctx context.Context, subsID, resourceGroup, diskName string, curDepth, maxDepth int) (*int32, *armcompute.Disk, error)
 
 	setNextCommandOutputScripts(scripts ...testingexec.FakeAction)
 
