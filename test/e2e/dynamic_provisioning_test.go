@@ -175,7 +175,7 @@ func (t *dynamicProvisioningTestSuite) defineTests(isMultiZone bool) {
 			"PublicNetworkAccess":    "Enabled",
 			"userAgent":              "azuredisk-e2e-test",
 			"enableAsyncAttach":      "false",
-			"attachDiskInitialDelay": "5000",
+			"attachDiskInitialDelay": "500",
 		}
 		test := testsuites.DynamicallyProvisionedVolumeSubpathTester{
 			CSIDriver:              testDriver,

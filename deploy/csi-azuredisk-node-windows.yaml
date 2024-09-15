@@ -45,7 +45,7 @@ spec:
           image: mcr.microsoft.com/oss/kubernetes-csi/livenessprobe:v2.13.0
           args:
             - "--csi-address=$(CSI_ENDPOINT)"
-            - "--probe-timeout=3s"
+            - "--probe-timeout=30s"
             - "--health-port=29603"
             - "--v=2"
           env:
