@@ -48,6 +48,7 @@ import (
 	"sigs.k8s.io/cloud-provider-azure/pkg/azclient/configloader"
 	azclients "sigs.k8s.io/cloud-provider-azure/pkg/azureclients"
 	azure "sigs.k8s.io/cloud-provider-azure/pkg/provider"
+	azureconfig "sigs.k8s.io/cloud-provider-azure/pkg/provider/config"
 )
 
 const (
@@ -153,13 +154,13 @@ func GetAttachDiskInitialDelay(attributes map[string]string) int {
 // GetCloudProviderFromClient get Azure Cloud Provider
 func GetCloudProviderFromClient(ctx context.Context, kubeClient clientset.Interface, secretName, secretNamespace, userAgent string,
 	allowEmptyCloudConfig bool, enableTrafficMgr bool, trafficMgrPort int64) (*azure.Cloud, error) {
-	var config *azure.Config
+	var config *azureconfig.Config
 	var fromSecret bool
 	var err error
 	az := &azure.Cloud{}
 	if kubeClient != nil {
 		klog.V(2).Infof("reading cloud config from secret %s/%s", secretNamespace, secretName)
-		config, err = configloader.Load[azure.Config](ctx, &configloader.K8sSecretLoaderConfig{
+		config, err = configloader.Load[azureconfig.Config](ctx, &configloader.K8sSecretLoaderConfig{
 			K8sSecretConfig: configloader.K8sSecretConfig{
 				SecretName:      secretName,
 				SecretNamespace: secretNamespace,
@@ -189,7 +190,7 @@ func GetCloudProviderFromClient(ctx context.Context, kubeClient clientset.Interf
 			}
 			klog.V(2).Infof("use default %s env var: %v", consts.DefaultAzureCredentialFileEnv, credFile)
 		}
-		config, err = configloader.Load[azure.Config](ctx, nil, &configloader.FileLoaderConfig{FilePath: credFile})
+		config, err = configloader.Load[azureconfig.Config](ctx, nil, &configloader.FileLoaderConfig{FilePath: credFile})
 		if err != nil {
 			klog.Warningf("load azure config from file(%s) failed with %v", credFile, err)
 		}
