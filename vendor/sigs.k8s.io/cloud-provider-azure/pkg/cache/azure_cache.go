@@ -17,7 +17,6 @@ limitations under the License.
 package cache
 
 import (
-	"context"
 	"fmt"
 	"sync"
 	"time"
@@ -45,7 +44,7 @@ const (
 )
 
 // GetFunc defines a getter function for timedCache.
-type GetFunc func(ctx context.Context, key string) (interface{}, error)
+type GetFunc func(key string) (interface{}, error)
 
 // AzureCacheEntry is the internal structure stores inside TTLStore.
 type AzureCacheEntry struct {
@@ -65,8 +64,8 @@ func cacheKeyFunc(obj interface{}) (string, error) {
 
 // Resource operations
 type Resource interface {
-	Get(ctx context.Context, key string, crt AzureCacheReadType) (interface{}, error)
-	GetWithDeepCopy(ctx context.Context, key string, crt AzureCacheReadType) (interface{}, error)
+	Get(key string, crt AzureCacheReadType) (interface{}, error)
+	GetWithDeepCopy(key string, crt AzureCacheReadType) (interface{}, error)
 	Delete(key string) error
 	Set(key string, data interface{})
 	Update(key string, data interface{})
@@ -152,26 +151,26 @@ func (t *TimedCache) getInternal(key string) (*AzureCacheEntry, error) {
 }
 
 // Get returns the requested item by key.
-func (t *TimedCache) Get(ctx context.Context, key string, crt AzureCacheReadType) (interface{}, error) {
-	return t.get(ctx, key, crt)
+func (t *TimedCache) Get(key string, crt AzureCacheReadType) (interface{}, error) {
+	return t.get(key, crt)
 }
 
-func (c *ResourceProvider) Get(ctx context.Context, key string, _ AzureCacheReadType) (interface{}, error) {
-	return c.Getter(ctx, key)
+func (c *ResourceProvider) Get(key string, _ AzureCacheReadType) (interface{}, error) {
+	return c.Getter(key)
 }
 
 // Get returns the requested item by key with deep copy.
-func (t *TimedCache) GetWithDeepCopy(ctx context.Context, key string, crt AzureCacheReadType) (interface{}, error) {
-	data, err := t.get(ctx, key, crt)
+func (t *TimedCache) GetWithDeepCopy(key string, crt AzureCacheReadType) (interface{}, error) {
+	data, err := t.get(key, crt)
 	copied := deepcopy.Copy(data)
 	return copied, err
 }
 
-func (c *ResourceProvider) GetWithDeepCopy(ctx context.Context, key string, _ AzureCacheReadType) (interface{}, error) {
-	return c.Getter(ctx, key)
+func (c *ResourceProvider) GetWithDeepCopy(key string, _ AzureCacheReadType) (interface{}, error) {
+	return c.Getter(key)
 }
 
-func (t *TimedCache) get(ctx context.Context, key string, crt AzureCacheReadType) (interface{}, error) {
+func (t *TimedCache) get(key string, crt AzureCacheReadType) (interface{}, error) {
 	entry, err := t.getInternal(key)
 	if err != nil {
 		return nil, err
@@ -194,7 +193,7 @@ func (t *TimedCache) get(ctx context.Context, key string, crt AzureCacheReadType
 	// Data is not cached yet, cache data is expired or requested force refresh
 	// cache it by getter. entry is locked before getting to ensure concurrent
 	// gets don't result in multiple ARM calls.
-	data, err := t.resourceProvider.Get(ctx, key, CacheReadTypeDefault /* not matter */)
+	data, err := t.resourceProvider.Get(key, CacheReadTypeDefault /* not matter */)
 	if err != nil {
 		return nil, err
 	}

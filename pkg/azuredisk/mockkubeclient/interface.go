@@ -47,7 +47,7 @@ import (
 	v1alpha19 "k8s.io/client-go/kubernetes/typed/certificates/v1alpha1"
 	v1beta14 "k8s.io/client-go/kubernetes/typed/certificates/v1beta1"
 	v16 "k8s.io/client-go/kubernetes/typed/coordination/v1"
-	v1alpha111 "k8s.io/client-go/kubernetes/typed/coordination/v1alpha1"
+	v1alpha111 "k8s.io/client-go/kubernetes/typed/coordination/v1alpha2"
 	v1beta15 "k8s.io/client-go/kubernetes/typed/coordination/v1beta1"
 	v17 "k8s.io/client-go/kubernetes/typed/core/v1"
 	v18 "k8s.io/client-go/kubernetes/typed/discovery/v1"

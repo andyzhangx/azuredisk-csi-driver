@@ -17,7 +17,6 @@ limitations under the License.
 package provider
 
 import (
-	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -149,7 +148,7 @@ func fillNetInterfacePublicIPs(publicIPs []PublicIPMetadata, netInterface *Netwo
 	}
 }
 
-func (ims *InstanceMetadataService) getMetadata(_ context.Context, key string) (interface{}, error) {
+func (ims *InstanceMetadataService) getMetadata(key string) (interface{}, error) {
 	instanceMetadata, err := ims.getInstanceMetadata(key)
 	if err != nil {
 		return nil, err
@@ -256,8 +255,8 @@ func (ims *InstanceMetadataService) getLoadBalancerMetadata() (*LoadBalancerMeta
 
 // GetMetadata gets instance metadata from cache.
 // crt determines if we can get data from stalled cache/need fresh if cache expired.
-func (ims *InstanceMetadataService) GetMetadata(ctx context.Context, crt azcache.AzureCacheReadType) (*InstanceMetadata, error) {
-	cache, err := ims.imsCache.Get(ctx, consts.MetadataCacheKey, crt)
+func (ims *InstanceMetadataService) GetMetadata(crt azcache.AzureCacheReadType) (*InstanceMetadata, error) {
+	cache, err := ims.imsCache.Get(consts.MetadataCacheKey, crt)
 	if err != nil {
 		return nil, err
 	}
@@ -275,9 +274,9 @@ func (ims *InstanceMetadataService) GetMetadata(ctx context.Context, crt azcache
 }
 
 // GetPlatformSubFaultDomain returns the PlatformSubFaultDomain from IMDS if set.
-func (az *Cloud) GetPlatformSubFaultDomain(ctx context.Context) (string, error) {
+func (az *Cloud) GetPlatformSubFaultDomain() (string, error) {
 	if az.UseInstanceMetadata {
-		metadata, err := az.Metadata.GetMetadata(ctx, azcache.CacheReadTypeUnsafe)
+		metadata, err := az.Metadata.GetMetadata(azcache.CacheReadTypeUnsafe)
 		if err != nil {
 			klog.Errorf("GetPlatformSubFaultDomain: failed to GetMetadata: %s", err.Error())
 			return "", err

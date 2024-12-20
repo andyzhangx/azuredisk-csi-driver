@@ -87,8 +87,6 @@ type AccountOptions struct {
 	SoftDeleteContainers                    int32
 	// indicate whether to get a random matching account, if false, will get the first matching account
 	PickRandomMatchingAccount bool
-	// provide the source account name in snapshot restore and volume clone scenarios
-	SourceAccountName string
 }
 
 type accountWithLocation struct {
@@ -343,15 +341,6 @@ func (az *Cloud) EnsureStorageAccount(ctx context.Context, accountOptions *Accou
 				}
 				accountName = accounts[index].Name
 				createNewAccount = false
-				if accountOptions.SourceAccountName != "" {
-					for _, acct := range accounts {
-						if acct.Name == accountOptions.SourceAccountName {
-							klog.V(2).Infof("found a matching account %s type %s location %s with source account name", acct.Name, acct.StorageType, acct.Location)
-							accountName = acct.Name
-							break
-						}
-					}
-				}
 				klog.V(4).Infof("found a matching account %s type %s location %s", accounts[index].Name, accounts[index].StorageType, accounts[index].Location)
 			}
 		}
@@ -720,7 +709,7 @@ func (az *Cloud) getStorageAccountWithCache(ctx context.Context, subsID, resourc
 	}
 
 	// search in cache first
-	cache, err := az.storageAccountCache.Get(ctx, account, cache.CacheReadTypeDefault)
+	cache, err := az.storageAccountCache.Get(account, cache.CacheReadTypeDefault)
 	if err != nil {
 		return storage.Account{}, retry.NewError(false, err)
 	}
@@ -749,7 +738,7 @@ func (az *Cloud) getFileServicePropertiesCache(ctx context.Context, subsID, reso
 	}
 
 	// search in cache first
-	cache, err := az.fileServicePropertiesCache.Get(ctx, account, cache.CacheReadTypeDefault)
+	cache, err := az.fileServicePropertiesCache.Get(account, cache.CacheReadTypeDefault)
 	if err != nil {
 		return storage.FileServiceProperties{}, err
 	}
