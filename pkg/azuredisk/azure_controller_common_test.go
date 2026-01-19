@@ -31,7 +31,7 @@ import (
 
 	"github.com/Azure/azure-sdk-for-go/sdk/azcore"
 	"github.com/Azure/azure-sdk-for-go/sdk/azcore/to"
-	armcompute "github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/compute/armcompute/v6"
+	armcompute "github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/compute/armcompute/v7"
 	autorestmocks "github.com/Azure/go-autorest/autorest/mocks"
 	"github.com/stretchr/testify/assert"
 	"go.uber.org/mock/gomock"
