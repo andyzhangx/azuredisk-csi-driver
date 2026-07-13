@@ -124,6 +124,27 @@ func formatAndMount(source, target, fstype string, options []string, m *mount.Sa
 		klog.V(2).Infof("formatAndMount - skip format for %s, old options: %v, new options: %v", target, options, newOptions)
 		return m.Mount(source, target, fstype, newOptions)
 	}
+
+	// Data-loss guard for kubernetes/kubernetes#140376: if blkid returns
+	// empty but the raw device carries an ext/xfs/btrfs signature (e.g.
+	// primary superblock damaged, backup SB still present), FormatAndMount
+	// would silently reformat the disk and lose the customer's data. Peek
+	// at a small set of well-known offsets first; if we see a signature,
+	// downgrade to a plain Mount so the driver never issues mkfs on data.
+	if newOptions, skip := azureutils.RemoveOptionIfExists(options, "skipFilesystemSignatureCheck"); skip {
+		klog.V(2).Infof("formatAndMount - skipFilesystemSignatureCheck opt-out set on %s", source)
+		options = newOptions
+	} else if sig, err := peekFilesystemSignature(source); err != nil {
+		// Unreadable device: be conservative and let m.FormatAndMount
+		// surface its own error rather than pre-empting it. This
+		// matches the pre-existing behaviour: the caller retries and
+		// upstream sees the same error message it always did.
+		klog.Warningf("formatAndMount - signature peek failed for %s: %v (proceeding with FormatAndMount)", source, err)
+	} else if sig.Type != "" {
+		klog.Warningf("formatAndMount - detected existing filesystem %s on %s; downgrading to Mount to avoid reformatting an already-formatted disk (see kubernetes/kubernetes#140376). Set mountOption 'skipFilesystemSignatureCheck' on the StorageClass/PV to override.", sig, source)
+		return m.Mount(source, target, fstype, options)
+	}
+
 	return m.FormatAndMount(source, target, fstype, options)
 }
 
