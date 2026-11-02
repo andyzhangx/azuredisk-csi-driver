@@ -22,8 +22,11 @@ import (
 	"sigs.k8s.io/azuredisk-csi-driver/test/e2e/driver"
 
 	"github.com/onsi/ginkgo/v2"
+	"github.com/onsi/gomega"
 	v1 "k8s.io/api/core/v1"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	clientset "k8s.io/client-go/kubernetes"
+	"k8s.io/kubernetes/test/e2e/framework"
 )
 
 // DynamicallyProvisionedCollocatedPodTest will provision required StorageClass(es), PVC(s) and Pod(s)
@@ -41,7 +44,20 @@ func (t *DynamicallyProvisionedCollocatedPodTest) Run(ctx context.Context, clien
 	for _, pod := range t.Pods {
 		tpod, cleanup := pod.SetupWithDynamicVolumes(ctx, client, namespace, t.CSIDriver, t.StorageClassParameters)
 		if t.ColocatePods && nodeName != "" {
-			tpod.SetNodeSelector(map[string]string{"name": nodeName})
+			// Keep scheduling enabled so WaitForFirstConsumer volumes can bind.
+			tpod.SetAffinity(&v1.Affinity{
+				NodeAffinity: &v1.NodeAffinity{
+					RequiredDuringSchedulingIgnoredDuringExecution: &v1.NodeSelector{
+						NodeSelectorTerms: []v1.NodeSelectorTerm{
+							{
+								MatchFields: []v1.NodeSelectorRequirement{
+									{Key: "metadata.name", Operator: v1.NodeSelectorOpIn, Values: []string{nodeName}},
+								},
+							},
+						},
+					},
+				},
+			})
 		}
 		// defer must be called here for resources not get removed before using them
 		for i := range cleanup {
@@ -54,6 +70,14 @@ func (t *DynamicallyProvisionedCollocatedPodTest) Run(ctx context.Context, clien
 
 		ginkgo.By("checking that the pod is running")
 		tpod.WaitForRunningLong(ctx)
-		nodeName = tpod.pod.Spec.NodeName
+		runningPod, err := client.CoreV1().Pods(namespace.Name).Get(ctx, tpod.pod.Name, metav1.GetOptions{})
+		framework.ExpectNoError(err, "getting scheduled pod %s", tpod.pod.Name)
+		gomega.Expect(runningPod.Spec.NodeName).NotTo(gomega.BeEmpty(), "running pod must have an assigned node")
+		if t.ColocatePods && nodeName != "" {
+			gomega.Expect(runningPod.Spec.NodeName).To(gomega.Equal(nodeName), "all colocated pods must run on the first pod's node")
+		}
+		if nodeName == "" {
+			nodeName = runningPod.Spec.NodeName
+		}
 	}
 }
