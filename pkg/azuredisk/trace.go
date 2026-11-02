@@ -225,7 +225,8 @@ type klogSpanExporter struct{}
 var _ trace.SpanExporter = (*klogSpanExporter)(nil)
 
 // ExportSpans formats each finished span as a single structured klog line
-// describing its name, duration, identifiers, attributes, events and status.
+// describing its name, duration, identifiers, resource and span attributes,
+// events and status.
 func (e *klogSpanExporter) ExportSpans(_ context.Context, spans []trace.ReadOnlySpan) error {
 	logger := klog.V(klogSpanVerbosity)
 	if !logger.Enabled() {
@@ -256,6 +257,10 @@ func spanKeysAndValues(span trace.ReadOnlySpan) []interface{} {
 		kv = append(kv, "parentSpanID", parent.SpanID().String())
 	}
 	kv = append(kv, "durationMs", span.EndTime().Sub(span.StartTime()).Milliseconds())
+
+	for _, attr := range span.Resource().Attributes() {
+		kv = append(kv, string(attr.Key), attr.Value.Emit())
+	}
 
 	for _, attr := range span.Attributes() {
 		kv = append(kv, string(attr.Key), attr.Value.Emit())

@@ -168,6 +168,10 @@ func captureKlogAtSpanVerbosity(t *testing.T) (*bytes.Buffer, func()) {
 // enabled, a span produced via startSpan (with attributes, an event and a
 // status) is exported to the container logs by the klogSpanExporter.
 func TestTracingSpansVisibleInLogs(t *testing.T) {
+	t.Setenv(tracesExporterEnv, "klog")
+	t.Setenv("OTEL_TRACES_SAMPLER", "always_on")
+	t.Setenv("OTEL_SERVICE_NAME", "csi-azuredisk-controller")
+	t.Setenv("OTEL_RESOURCE_ATTRIBUTES", "deployment.environment.name=staging")
 	buf, restore := captureKlogAtSpanVerbosity(t)
 	defer restore()
 
@@ -205,6 +209,8 @@ func TestTracingSpansVisibleInLogs(t *testing.T) {
 	for _, want := range []string{
 		"otel trace span",
 		`span="AttachDisk"`,
+		`service.name="csi-azuredisk-controller"`,
+		`deployment.environment.name="staging"`,
 		`disk.name="pvc-123"`,
 		`node.name="aks-node-42"`,
 		eventThrottled,
