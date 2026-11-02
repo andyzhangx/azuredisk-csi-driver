@@ -1845,6 +1845,9 @@ func TestGetAttachDiskInitialDelay(t *testing.T) {
 }
 
 func TestGetRetryAfterSeconds(t *testing.T) {
+	if got := GetRetryAfterSeconds(errors.New("RetryAfter: 2170s")); got != 2170 {
+		t.Fatalf("telemetry retry delay = %d, want uncapped 2170", got)
+	}
 	tests := []struct {
 		desc     string
 		err      error

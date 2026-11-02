@@ -851,8 +851,10 @@ func IsThrottlingError(err error) bool {
 	return false
 }
 
-// getRetryAfterSeconds returns the number of seconds to wait from the error message
-func getRetryAfterSeconds(err error) int {
+// GetRetryAfterSeconds returns the ARM "Retry-After" back-off (in seconds)
+// parsed from a throttling error, or 0 when none is present. It exposes the
+// uncapped delay for telemetry; sleep-policy callers apply their own cap.
+func GetRetryAfterSeconds(err error) int {
 	if err == nil {
 		return 0
 	}
@@ -860,13 +862,15 @@ func getRetryAfterSeconds(err error) int {
 	match := re.FindStringSubmatch(err.Error())
 	if len(match) > 1 {
 		if retryAfter, err := strconv.Atoi(match[1]); err == nil {
-			if retryAfter > consts.MaxThrottlingSleepSec {
-				return consts.MaxThrottlingSleepSec
-			}
 			return retryAfter
 		}
 	}
 	return 0
+}
+
+// getRetryAfterSeconds caps the parsed delay for sleep-policy callers.
+func getRetryAfterSeconds(err error) int {
+	return min(GetRetryAfterSeconds(err), consts.MaxThrottlingSleepSec)
 }
 
 // SetKeyValueInMap set key/value pair in map

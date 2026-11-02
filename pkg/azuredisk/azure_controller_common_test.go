@@ -715,9 +715,9 @@ func TestCommonUpdateVM(t *testing.T) {
 		if test.isErrorRetriable {
 			testCloud.CloudProviderBackoff = true
 			testCloud.ResourceRequestBackoff = wait.Backoff{Steps: 1}
-			mockVMClient.EXPECT().BeginUpdate(ctx, testCloud.ResourceGroup, gomock.Any(), gomock.Any(), gomock.Any()).Return(nil, fmt.Errorf("retriable error")).AnyTimes()
+			mockVMClient.EXPECT().BeginUpdate(gomock.Any(), testCloud.ResourceGroup, gomock.Any(), gomock.Any(), gomock.Any()).Return(nil, fmt.Errorf("retriable error")).AnyTimes()
 		} else {
-			mockVMClient.EXPECT().BeginUpdate(ctx, testCloud.ResourceGroup, gomock.Any(), gomock.Any(), gomock.Any()).DoAndReturn(
+			mockVMClient.EXPECT().BeginUpdate(gomock.Any(), testCloud.ResourceGroup, gomock.Any(), gomock.Any(), gomock.Any()).DoAndReturn(
 				func(_ context.Context, _ string, vmName string, _ armcompute.VirtualMachineUpdate, _ *armcompute.VirtualMachinesClientBeginUpdateOptions) (*azruntime.Poller[armcompute.VirtualMachinesClientUpdateResponse], error) {
 					for _, vm := range expectedVMs {
 						if ptr.Deref(vm.Name, "") == vmName {

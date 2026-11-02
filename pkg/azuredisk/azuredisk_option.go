@@ -103,7 +103,7 @@ func (o *DriverOptions) AddFlags() *flag.FlagSet {
 	fs.StringVar(&o.CustomUserAgent, "custom-user-agent", "", "custom userAgent")
 	fs.StringVar(&o.UserAgentSuffix, "user-agent-suffix", "", "userAgent suffix")
 	fs.BoolVar(&o.UseCSIProxyGAInterface, "use-csiproxy-ga-interface", true, "boolean flag to enable csi-proxy GA interface on Windows")
-	fs.BoolVar(&o.EnableOtelTracing, "enable-otel-tracing", false, "If set, enable opentelemetry tracing for the driver. The tracing is disabled by default. Configure the exporter endpoint with OTEL_EXPORTER_OTLP_ENDPOINT and other env variables, see https://opentelemetry.io/docs/specs/otel/configuration/sdk-environment-variables/#general-sdk-configuration.")
+	fs.BoolVar(&o.EnableOtelTracing, "enable-otel-tracing", false, "If set, enable OpenTelemetry tracing for the driver. Spans are written to container logs via klog by default and additionally exported over OTLP/gRPC when OTEL_EXPORTER_OTLP_ENDPOINT or OTEL_EXPORTER_OTLP_TRACES_ENDPOINT is set. Use OTEL_KLOG_SPAN_VERBOSITY to control span log verbosity and OTEL_TRACES_EXPORTER=klog|otlp|klog,otlp|none to override exporter selection. Explicit OTLP selection uses the SDK's default endpoint when neither endpoint variable is set.")
 	fs.BoolVar(&o.EnableMinimumRetryAfter, "enable-minimum-retry-after", true, "boolean flag to enable minimum retry after policy in azclient")
 	fs.Var(&goFlagFeatureGate{gate: o.FeatureGates}, "feature-gates", fmt.Sprintf("A set of Azure Disk CSI driver feature gates in key=value form. Known features: %s", strings.Join(o.FeatureGates.KnownFeatures(), ", ")))
 	//only used in v1

@@ -28,6 +28,7 @@ import (
 	"github.com/Azure/azure-sdk-for-go/sdk/azcore"
 	"github.com/Azure/azure-sdk-for-go/sdk/azcore/to"
 	"github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/compute/armcompute/v7"
+	"go.opentelemetry.io/otel/attribute"
 
 	"k8s.io/apimachinery/pkg/api/resource"
 	kwait "k8s.io/apimachinery/pkg/util/wait"
@@ -123,8 +124,15 @@ type ManagedDiskOptions struct {
 }
 
 // CreateManagedDisk: create managed disk
-func (c *ManagedDiskController) CreateManagedDisk(ctx context.Context, options *ManagedDiskOptions) (string, error) {
-	var err error
+func (c *ManagedDiskController) CreateManagedDisk(ctx context.Context, options *ManagedDiskOptions) (diskURI string, err error) {
+	ctx, span := startSpan(ctx, "CreateManagedDisk",
+		attribute.String(attrDiskName, options.DiskName))
+	defer func() {
+		recordSpanResult(span, err)
+		recordThrottleIfThrottled(ctx, err)
+		span.End()
+	}()
+
 	klog.V(4).Infof("azureDisk - creating new managed Name:%s StorageAccountType:%s Size:%v", options.DiskName, options.StorageAccountType, options.SizeGB)
 
 	var createZones []string
@@ -346,7 +354,15 @@ func (c *ManagedDiskController) CreateManagedDisk(ctx context.Context, options *
 }
 
 // DeleteManagedDisk : delete managed disk
-func (c *ManagedDiskController) DeleteManagedDisk(ctx context.Context, diskURI string) error {
+func (c *ManagedDiskController) DeleteManagedDisk(ctx context.Context, diskURI string) (err error) {
+	ctx, span := startSpan(ctx, "DeleteManagedDisk",
+		attribute.String(attrDiskURI, diskURI))
+	defer func() {
+		recordSpanResult(span, err)
+		recordThrottleIfThrottled(ctx, err)
+		span.End()
+	}()
+
 	subsID, resourceGroup, diskName, err := azureutils.GetInfoFromURI(diskURI)
 	if err != nil {
 		return err
@@ -400,7 +416,15 @@ func (c *ManagedDiskController) GetDisk(ctx context.Context, subsID, resourceGro
 }
 
 // ResizeDisk Expand the disk to new size
-func (c *ManagedDiskController) ResizeDisk(ctx context.Context, diskURI string, oldSize resource.Quantity, newSize resource.Quantity, supportOnlineResize bool) (resource.Quantity, error) {
+func (c *ManagedDiskController) ResizeDisk(ctx context.Context, diskURI string, oldSize resource.Quantity, newSize resource.Quantity, supportOnlineResize bool) (newSizeResult resource.Quantity, err error) {
+	ctx, span := startSpan(ctx, "ResizeDisk",
+		attribute.String(attrDiskURI, diskURI))
+	defer func() {
+		recordSpanResult(span, err)
+		recordThrottleIfThrottled(ctx, err)
+		span.End()
+	}()
+
 	subsID, resourceGroup, diskName, err := azureutils.GetInfoFromURI(diskURI)
 	if err != nil {
 		return oldSize, err
@@ -451,7 +475,15 @@ func (c *ManagedDiskController) ResizeDisk(ctx context.Context, diskURI string, 
 }
 
 // ModifyDisk: modify disk
-func (c *ManagedDiskController) ModifyDisk(ctx context.Context, options *ManagedDiskOptions) error {
+func (c *ManagedDiskController) ModifyDisk(ctx context.Context, options *ManagedDiskOptions) (err error) {
+	ctx, span := startSpan(ctx, "ModifyDisk",
+		attribute.String(attrDiskURI, options.SourceResourceID))
+	defer func() {
+		recordSpanResult(span, err)
+		recordThrottleIfThrottled(ctx, err)
+		span.End()
+	}()
+
 	klog.V(4).Infof("azureDisk - modifying managed disk URI:%s, StorageAccountType:%s, DiskIOPSReadWrite:%s, DiskMBpsReadWrite:%s", options.SourceResourceID, options.StorageAccountType, options.DiskIOPSReadWrite, options.DiskMBpsReadWrite)
 
 	subsID, rg, diskName, err := azureutils.GetInfoFromURI(options.SourceResourceID)

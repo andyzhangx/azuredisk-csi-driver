@@ -28,6 +28,7 @@ import (
 	"github.com/Azure/azure-sdk-for-go/sdk/azcore"
 	"github.com/Azure/azure-sdk-for-go/sdk/azcore/to"
 	"github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/compute/armcompute/v7"
+	"go.opentelemetry.io/otel/attribute"
 
 	"k8s.io/apimachinery/pkg/types"
 	kwait "k8s.io/apimachinery/pkg/util/wait"
@@ -129,7 +130,16 @@ type ExtendedLocation struct {
 // occupiedLuns is used to avoid conflict with other disk attach in k8s VolumeAttachments
 // return (lun, error)
 func (c *controllerCommon) AttachDisk(ctx context.Context, diskName, diskURI string, nodeName types.NodeName,
-	cachingMode armcompute.CachingTypes, disk *armcompute.Disk, occupiedLuns []int) (int32, error) {
+	cachingMode armcompute.CachingTypes, disk *armcompute.Disk, occupiedLuns []int) (lun int32, err error) {
+	ctx, span := startSpan(ctx, "AttachDisk",
+		attribute.String(attrDiskURI, diskURI),
+		attribute.String(attrNode, string(nodeName)))
+	defer func() {
+		recordSpanResult(span, err)
+		recordThrottleIfThrottled(ctx, err)
+		span.End()
+	}()
+
 	diskEncryptionSetID := ""
 	writeAcceleratorEnabled := false
 
@@ -225,7 +235,10 @@ func (c *controllerCommon) AttachDisk(ctx context.Context, diskName, diskURI str
 
 	if !waitForDetachHappened && c.AttachDetachInitialDelayInMs > 0 && requestNum == 1 {
 		klog.V(2).Infof("wait %dms for more requests on node %s, current disk attach: %s", c.AttachDetachInitialDelayInMs, node, diskURI)
+		_, batchSpan := startSpan(ctx, "attachBatchWait",
+			attribute.Int("batch_delay_ms", c.AttachDetachInitialDelayInMs))
 		time.Sleep(time.Duration(c.AttachDetachInitialDelayInMs) * time.Millisecond)
+		batchSpan.End()
 	}
 
 	numDisksAllowed := math.MaxInt
@@ -282,7 +295,10 @@ func (c *controllerCommon) AttachDisk(ctx context.Context, diskName, diskURI str
 		}
 	}
 
-	lun, setLunErr := c.SetDiskLun(ctx, nodeName, diskuri, diskMap, occupiedLuns)
+	setLunCtx, setLunSpan := startSpan(ctx, "setDiskLun")
+	lun, setLunErr := c.SetDiskLun(setLunCtx, nodeName, diskuri, diskMap, occupiedLuns)
+	recordSpanResult(setLunSpan, setLunErr)
+	setLunSpan.End()
 	if setLunErr != nil {
 		return -1, setLunErr
 	}
@@ -302,7 +318,11 @@ func (c *controllerCommon) AttachDisk(ctx context.Context, diskName, diskURI str
 	}()
 
 	klog.V(2).Infof("Trying to attach volume %s lun %d to node %s, diskMap len:%d, %+v", diskURI, lun, nodeName, len(diskMap), diskMap)
-	err = vmset.AttachDisk(ctx, nodeName, diskMap)
+	vmUpdateCtx, vmUpdateSpan := startSpan(ctx, "vmUpdate",
+		attribute.Int("disk_batch_size", len(diskMap)))
+	err = vmset.AttachDisk(vmUpdateCtx, nodeName, diskMap)
+	recordSpanResult(vmUpdateSpan, err)
+	vmUpdateSpan.End()
 	if err != nil {
 		if strings.Contains(err.Error(), util.MaximumDataDiskExceededMsg) {
 			klog.Warningf("hit max data disk count when attaching disk %s, set cache for node(%s)", diskName, nodeName)
@@ -319,7 +339,11 @@ func (c *controllerCommon) AttachDisk(ctx context.Context, diskName, diskURI str
 
 	if !c.DisableDiskLunCheck {
 		// always check disk lun after disk attach complete
-		return c.verifyAttach(ctx, diskName, diskURI, nodeName)
+		verifyCtx, verifySpan := startSpan(ctx, "verifyAttach")
+		lun, err = c.verifyAttach(verifyCtx, diskName, diskURI, nodeName)
+		recordSpanResult(verifySpan, err)
+		verifySpan.End()
+		return lun, err
 	}
 	return lun, nil
 }
@@ -383,7 +407,16 @@ func (c *controllerCommon) retrieveAttachBatchedDiskRequests(nodeName, diskURI s
 }
 
 // DetachDisk detaches a disk from VM
-func (c *controllerCommon) DetachDisk(ctx context.Context, diskName, diskURI string, nodeName types.NodeName) error {
+func (c *controllerCommon) DetachDisk(ctx context.Context, diskName, diskURI string, nodeName types.NodeName) (err error) {
+	ctx, span := startSpan(ctx, "DetachDisk",
+		attribute.String(attrDiskURI, diskURI),
+		attribute.String(attrNode, string(nodeName)))
+	defer func() {
+		recordSpanResult(span, err)
+		recordThrottleIfThrottled(ctx, err)
+		span.End()
+	}()
+
 	if _, err := c.cloud.InstanceID(ctx, nodeName); err != nil {
 		if errors.Is(err, cloudprovider.InstanceNotFound) {
 			// if host doesn't exist, no need to detach
@@ -503,7 +536,15 @@ func (c *controllerCommon) DetachDisk(ctx context.Context, diskName, diskURI str
 }
 
 // UpdateVM updates a vm
-func (c *controllerCommon) UpdateVM(ctx context.Context, nodeName types.NodeName) error {
+func (c *controllerCommon) UpdateVM(ctx context.Context, nodeName types.NodeName) (err error) {
+	ctx, span := startSpan(ctx, "UpdateVM",
+		attribute.String(attrNode, string(nodeName)))
+	defer func() {
+		recordSpanResult(span, err)
+		recordThrottleIfThrottled(ctx, err)
+		span.End()
+	}()
+
 	vmset, err := c.cloud.GetNodeVMSet(ctx, nodeName, azcache.CacheReadTypeUnsafe)
 	if err != nil {
 		return err
@@ -648,7 +689,16 @@ func (c *controllerCommon) GetNodeDataDisks(ctx context.Context, nodeName types.
 }
 
 // GetDiskLun finds the lun on the host that the vhd is attached to, given a vhd's diskName and diskURI.
-func (c *controllerCommon) GetDiskLun(ctx context.Context, diskName, diskURI string, nodeName types.NodeName) (int32, *string, error) {
+func (c *controllerCommon) GetDiskLun(ctx context.Context, diskName, diskURI string, nodeName types.NodeName) (lun int32, vmState *string, err error) {
+	ctx, span := startSpan(ctx, "GetDiskLun",
+		attribute.String(attrDiskURI, diskURI),
+		attribute.String(attrNode, string(nodeName)))
+	defer func() {
+		recordSpanResult(span, err)
+		recordThrottleIfThrottled(ctx, err)
+		span.End()
+	}()
+
 	// GetNodeDataDisks need to fetch the cached data/fresh data if cache expired here
 	// to ensure we get LUN based on latest entry.
 	disks, provisioningState, err := c.GetNodeDataDisks(ctx, nodeName, azcache.CacheReadTypeDefault)

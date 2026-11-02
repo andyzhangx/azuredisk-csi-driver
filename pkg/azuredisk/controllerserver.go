@@ -33,6 +33,8 @@ import (
 	"github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/compute/armcompute/v7"
 	"github.com/container-storage-interface/spec/lib/go/csi"
 
+	"go.opentelemetry.io/otel/attribute"
+	oteltrace "go.opentelemetry.io/otel/trace"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 	v1 "k8s.io/api/core/v1"
@@ -181,6 +183,10 @@ func (d *Driver) CreateVolume(ctx context.Context, req *csi.CreateVolumeRequest)
 		diskParams.DiskName = name
 	}
 	diskParams.DiskName = azureutils.CreateValidDiskName(diskParams.DiskName)
+
+	// Stamp the canonical correlation key (disk name) onto the root span, its
+	// child sub-spans (via baggage) and ordinary klog lines for this request.
+	ctx = withDiskCorrelation(ctx, diskParams.DiskName)
 
 	if diskParams.ResourceGroup == "" {
 		diskParams.ResourceGroup = d.cloud.ResourceGroup
@@ -650,6 +656,11 @@ func (d *Driver) DeleteVolume(ctx context.Context, req *csi.DeleteVolumeRequest)
 		mc.WithAdditionalVolumeInfo(consts.VolumeID, diskURI).Observe(isOperationSucceeded)
 	}()
 
+	oteltrace.SpanFromContext(ctx).SetAttributes(attribute.String(attrDiskURI, diskURI))
+	if _, _, diskName, err := azureutils.GetInfoFromURI(diskURI); err == nil {
+		ctx = withDiskCorrelation(ctx, diskName)
+	}
+
 	// If the PV is a QAD PV, unclaim the disk before deletion (feature-gated).
 	if d.nodeDrivenAttachDetachEnabled {
 		pv, pvErr := d.getPVFromDiskURI(ctx, diskURI)
@@ -816,6 +827,12 @@ func (d *Driver) ControllerPublishVolume(ctx context.Context, req *csi.Controlle
 		return nil, status.Error(codes.InvalidArgument, err.Error())
 	}
 
+	// Correlate early (best-effort) so checkDiskExists and its span carry
+	// disk.name; the strict derivation below still governs error handling.
+	if _, _, diskName, err := azureutils.GetInfoFromURI(diskURI); err == nil {
+		ctx = withDiskCorrelation(ctx, diskName)
+	}
+
 	disk, err := d.checkDiskExists(ctx, diskURI)
 	if err != nil {
 		if strings.Contains(err.Error(), "context deadline") {
@@ -836,6 +853,13 @@ func (d *Driver) ControllerPublishVolume(ctx context.Context, req *csi.Controlle
 	if err != nil {
 		return nil, status.Errorf(codes.Internal, "%v", err)
 	}
+
+	// Label the root span so this trace can be correlated by disk and node.
+	oteltrace.SpanFromContext(ctx).SetAttributes(
+		attribute.String(attrDiskURI, diskURI),
+		attribute.String(attrNode, string(nodeName)),
+	)
+	ctx = withDiskCorrelation(ctx, diskName)
 
 	mc := csiMetrics.NewCSIMetricContext("controller_publish_volume").WithBasicVolumeInfo(d.cloud.ResourceGroup, d.cloud.SubscriptionID, d.Name)
 	isOperationSucceeded := false
@@ -930,7 +954,10 @@ func (d *Driver) ControllerPublishVolume(ctx context.Context, req *csi.Controlle
 			}
 		}
 
-		occupiedLuns := d.getOccupiedLunsFromNode(ctx, nodeName, diskURI)
+		occSpanCtx, occSpan := startSpan(ctx, "getOccupiedLuns")
+		occupiedLuns := d.getOccupiedLunsFromNode(occSpanCtx, nodeName, diskURI)
+		occSpan.SetAttributes(attribute.Int("occupied_lun_count", len(occupiedLuns)))
+		occSpan.End()
 		klog.V(2).Infof("Trying to attach volume %s to node %s", diskName, nodeName)
 
 		attachDiskInitialDelay := azureutils.GetAttachDiskInitialDelay(volumeContext)
@@ -956,7 +983,8 @@ func (d *Driver) ControllerPublishVolume(ctx context.Context, req *csi.Controlle
 					return nil, err
 				}
 				klog.Warningf("volume %s is already attached to node %s, try detach first", diskURI, derr.CurrentNode)
-				if err = d.diskController.DetachDisk(ctx, diskName, diskURI, derr.CurrentNode); err != nil {
+				err = d.diskController.DetachDisk(ctx, diskName, diskURI, derr.CurrentNode)
+				if err != nil {
 					return nil, status.Errorf(codes.Internal, "Could not detach volume %s from node %s: %v", diskURI, derr.CurrentNode, err)
 				}
 				klog.V(2).Infof("Trying to attach volume %s to node %s again", diskName, nodeName)
@@ -1066,6 +1094,13 @@ func (d *Driver) ControllerUnpublishVolume(ctx context.Context, req *csi.Control
 		return nil, status.Errorf(codes.Internal, "%v", err)
 	}
 
+	// Label the root span so this trace can be correlated by disk and node.
+	oteltrace.SpanFromContext(ctx).SetAttributes(
+		attribute.String(attrDiskURI, diskURI),
+		attribute.String(attrNode, string(nodeName)),
+	)
+	ctx = withDiskCorrelation(ctx, diskName)
+
 	mc := csiMetrics.NewCSIMetricContext("controller_unpublish_volume").WithBasicVolumeInfo(d.cloud.ResourceGroup, d.cloud.SubscriptionID, d.Name)
 	isOperationSucceeded := false
 	defer func() {
@@ -1074,7 +1109,8 @@ func (d *Driver) ControllerUnpublishVolume(ctx context.Context, req *csi.Control
 
 	klog.V(2).Infof("Trying to detach volume %s from node %s", diskURI, nodeID)
 
-	if err := d.diskController.DetachDisk(ctx, diskName, diskURI, nodeName); err != nil {
+	err = d.diskController.DetachDisk(ctx, diskName, diskURI, nodeName)
+	if err != nil {
 		if strings.Contains(err.Error(), consts.ErrDiskNotFound) {
 			klog.Warningf("volume %s already detached from node %s", diskURI, nodeID)
 		} else {
@@ -1416,6 +1452,11 @@ func (d *Driver) ControllerExpandVolume(ctx context.Context, req *csi.Controller
 	requestSize := *resource.NewQuantity(capacityBytes, resource.BinarySI)
 
 	diskURI := req.GetVolumeId()
+	// Label the root span and propagate the canonical correlation key.
+	oteltrace.SpanFromContext(ctx).SetAttributes(attribute.String(attrDiskURI, diskURI))
+	if _, _, diskName, err := azureutils.GetInfoFromURI(diskURI); err == nil {
+		ctx = withDiskCorrelation(ctx, diskName)
+	}
 
 	if d.nodeDrivenAttachDetachEnabled {
 		pv, pvErr := d.getPVFromDiskURI(ctx, diskURI)
