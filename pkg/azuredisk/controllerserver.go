@@ -78,17 +78,49 @@ type listVolumeStatus struct {
 	err           error
 }
 
+func mutableDiskParameterKey(key string) string {
+	key = strings.ToLower(key)
+	if key == consts.StorageAccountTypeField {
+		return consts.SkuNameField
+	}
+	return key
+}
+
+func normalizeMutableDiskParameters(parameters map[string]string) (map[string]string, error) {
+	normalized := make(map[string]string, len(parameters))
+	for key, value := range parameters {
+		canonicalKey := mutableDiskParameterKey(key)
+		switch canonicalKey {
+		case consts.SkuNameField, consts.DiskIOPSReadWriteField, consts.DiskMBPSReadWriteField:
+		default:
+			return nil, fmt.Errorf("unsupported mutable disk parameter %q", key)
+		}
+		if _, exists := normalized[canonicalKey]; exists {
+			return nil, fmt.Errorf("duplicate mutable disk parameter %q", canonicalKey)
+		}
+		normalized[canonicalKey] = value
+	}
+	return normalized, nil
+}
+
 // CreateVolume provisions an azure disk
 func (d *Driver) CreateVolume(ctx context.Context, req *csi.CreateVolumeRequest) (*csi.CreateVolumeResponse, error) {
 	if err := d.ValidateControllerServiceRequest(csi.ControllerServiceCapability_RPC_CREATE_DELETE_VOLUME); err != nil {
 		klog.Errorf("invalid create volume req: %v", req)
 		return nil, err
 	}
-	params := make(map[string]string, len(req.GetParameters())+len(req.GetMutableParameters()))
-	for k, v := range req.GetParameters() {
-		params[k] = v
+	mutableParams, err := normalizeMutableDiskParameters(req.GetMutableParameters())
+	if err != nil {
+		return nil, status.Errorf(codes.InvalidArgument, "Invalid mutable disk parameters: %v", err)
 	}
-	for k, v := range req.GetMutableParameters() {
+	params := make(map[string]string, len(req.GetParameters())+len(mutableParams))
+	for k, v := range req.GetParameters() {
+		// Mutable settings take precedence regardless of key casing or SKU alias.
+		if _, overridden := mutableParams[mutableDiskParameterKey(k)]; !overridden {
+			params[k] = v
+		}
+	}
+	for k, v := range mutableParams {
 		params[k] = v
 	}
 	diskParams, err := azureutils.ParseDiskParameters(params)
@@ -717,6 +749,15 @@ func (d *Driver) ControllerModifyVolume(ctx context.Context, req *csi.Controller
 		return nil, status.Errorf(codes.Internal, "invalid modify volume req: %v", req)
 	}
 
+	mutableParams, err := normalizeMutableDiskParameters(req.GetMutableParameters())
+	if err != nil {
+		return nil, status.Errorf(codes.InvalidArgument, "Invalid mutable disk parameters: %v", err)
+	}
+	diskParams, err := azureutils.ParseDiskParameters(mutableParams)
+	if err != nil {
+		return nil, status.Errorf(codes.InvalidArgument, "Failed parsing disk parameters: %v", err)
+	}
+
 	diskURI := volumeID
 
 	if d.nodeDrivenAttachDetachEnabled {
@@ -732,11 +773,6 @@ func (d *Driver) ControllerModifyVolume(ctx context.Context, req *csi.Controller
 	currentDisk, err := d.checkDiskExists(ctx, diskURI)
 	if err != nil {
 		return nil, status.Error(codes.NotFound, fmt.Sprintf("Volume not found, failed with error: %v", err))
-	}
-
-	diskParams, err := azureutils.ParseDiskParameters(req.GetMutableParameters())
-	if err != nil {
-		return nil, status.Errorf(codes.InvalidArgument, "Failed parsing disk parameters: %v", err)
 	}
 
 	// normalize values

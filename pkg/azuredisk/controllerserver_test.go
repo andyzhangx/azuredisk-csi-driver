@@ -341,6 +341,228 @@ func TestPollAsyncOperation(t *testing.T) {
 	})
 }
 
+func TestNormalizeMutableDiskParameters(t *testing.T) {
+	tests := []struct {
+		name       string
+		parameters map[string]string
+		expected   map[string]string
+	}{
+		{name: "nil", expected: map[string]string{}},
+		{name: "empty", parameters: map[string]string{}, expected: map[string]string{}},
+		{
+			name: "case insensitive",
+			parameters: map[string]string{
+				"SKUName":           "PremiumV2_LRS",
+				"DiskIOPSReadWrite": "5000",
+				"DiskMBpsReadWrite": "300",
+			},
+			expected: map[string]string{
+				consts.SkuNameField:           "PremiumV2_LRS",
+				consts.DiskIOPSReadWriteField: "5000",
+				consts.DiskMBPSReadWriteField: "300",
+			},
+		},
+		{
+			name:       "SKU alias",
+			parameters: map[string]string{"StorageAccountType": "PremiumV2_LRS"},
+			expected:   map[string]string{consts.SkuNameField: "PremiumV2_LRS"},
+		},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			var original map[string]string
+			if test.parameters != nil {
+				original = make(map[string]string, len(test.parameters))
+				for key, value := range test.parameters {
+					original[key] = value
+				}
+			}
+			actual, err := normalizeMutableDiskParameters(test.parameters)
+			require.NoError(t, err)
+			assert.Equal(t, test.expected, actual)
+			assert.Equal(t, original, test.parameters)
+		})
+	}
+}
+
+func TestRejectInvalidMutableDiskParameters(t *testing.T) {
+	type testCase struct {
+		name       string
+		parameters map[string]string
+		errMessage string
+	}
+	tests := []testCase{}
+	for _, key := range []string{
+		"subscriptionid", "resourcegroup", "diskname", "diskencryptionsetid",
+		"diskencryptiontype", "networkaccesspolicy", "publicnetworkaccess",
+		"diskaccessid", "attachmode", "location", "tags", "useragent",
+		"cachingmode", "maxshares", "unknown",
+	} {
+		for _, variant := range []string{key, strings.ToUpper(key)} {
+			tests = append(tests, testCase{variant, map[string]string{variant: "value"}, "unsupported mutable disk parameter"})
+		}
+	}
+	tests = append(tests,
+		testCase{
+			"target redirection",
+			map[string]string{
+				"subscriptionid": "victim-subscription", "resourcegroup": "victim-rg",
+				"diskname": "victim-disk", "skuname": "StandardSSD_LRS",
+				"networkaccesspolicy": "AllowAll", "publicnetworkaccess": "Enabled",
+			},
+			"unsupported mutable disk parameter",
+		},
+	)
+	for _, parameters := range []map[string]string{
+		{"skuname": "PremiumV2_LRS", "SKUName": "StandardSSD_LRS"},
+		{"skuname": "PremiumV2_LRS", "storageaccounttype": "StandardSSD_LRS"},
+		{"diskiopsreadwrite": "5000", "DiskIOPSReadWrite": "5000"},
+		{"diskmbpsreadwrite": "300", "DiskMBpsReadWrite": "400"},
+	} {
+		tests = append(tests, testCase{fmt.Sprint(parameters), parameters, "duplicate mutable disk parameter"})
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			for _, storageClassParams := range []map[string]string{nil, test.parameters} {
+				t.Run(fmt.Sprintf("create/withStorageClass=%t", storageClassParams != nil), func(t *testing.T) {
+					cntl := gomock.NewController(t)
+					d, err := NewFakeDriver(cntl)
+					require.NoError(t, err)
+					// No disk-client expectations: invalid requests must fail before Azure access.
+					resp, err := d.CreateVolume(context.Background(), &csi.CreateVolumeRequest{
+						Name: testVolumeName, VolumeCapabilities: stdVolumeCapabilities,
+						Parameters: storageClassParams, MutableParameters: test.parameters,
+					})
+					assert.Nil(t, resp)
+					assert.Equal(t, codes.InvalidArgument, status.Code(err))
+					require.ErrorContains(t, err, test.errMessage)
+				})
+			}
+			t.Run("modify", func(t *testing.T) {
+				cntl := gomock.NewController(t)
+				d, err := NewFakeDriver(cntl)
+				require.NoError(t, err)
+				resp, err := d.ControllerModifyVolume(context.Background(), &csi.ControllerModifyVolumeRequest{
+					VolumeId: testVolumeID, MutableParameters: test.parameters,
+				})
+				assert.Nil(t, resp)
+				assert.Equal(t, codes.InvalidArgument, status.Code(err))
+				require.ErrorContains(t, err, test.errMessage)
+			})
+		})
+	}
+}
+
+func TestCreateVolumeMutableParameterPrecedence(t *testing.T) {
+	for _, mutableSKUKey := range []string{"skuName", "StorageAccountType", ""} {
+		for _, storageClassSKUKey := range []string{"SKUName", "storageaccounttype"} {
+			t.Run(mutableSKUKey+"/"+storageClassSKUKey, func(t *testing.T) {
+				cntl := gomock.NewController(t)
+				d, err := NewFakeDriver(cntl)
+				require.NoError(t, err)
+				parameters := map[string]string{
+					"subscriptionid":    "custom-subscription",
+					"resourcegroup":     "custom-rg",
+					"diskname":          "custom-disk",
+					storageClassSKUKey:  "PremiumV2_LRS",
+					"DiskIOPSReadWrite": "3000",
+					"DiskMBpsReadWrite": "125",
+				}
+				originalParameters := make(map[string]string, len(parameters))
+				for key, value := range parameters {
+					originalParameters[key] = value
+				}
+				var mutableParameters map[string]string
+				expectedIOPS, expectedMBps := int64(3000), int64(125)
+				if mutableSKUKey != "" {
+					parameters[storageClassSKUKey] = "StandardSSD_LRS"
+					originalParameters[storageClassSKUKey] = "StandardSSD_LRS"
+					mutableParameters = map[string]string{
+						mutableSKUKey:       "PremiumV2_LRS",
+						"DISKIOPSREADWRITE": "5000",
+						"diskmbpsreadwrite": "300",
+					}
+					expectedIOPS, expectedMBps = 5000, 300
+				}
+				id := fmt.Sprintf(consts.ManagedDiskPath, "custom-subscription", "custom-rg", "custom-disk")
+				disk := &armcompute.Disk{
+					ID: to.Ptr(id), Name: to.Ptr("custom-disk"),
+					Properties: &armcompute.DiskProperties{
+						DiskSizeGB: to.Ptr(int32(10)), ProvisioningState: to.Ptr("Succeeded"),
+					},
+				}
+				diskClient := mock_diskclient.NewMockInterface(cntl)
+				d.getClientFactory().(*mock_azclient.MockClientFactory).EXPECT().
+					GetDiskClientForSub("custom-subscription").Return(diskClient, nil).AnyTimes()
+				diskClient.EXPECT().Get(gomock.Any(), "custom-rg", "custom-disk").Return(disk, nil).AnyTimes()
+				diskClient.EXPECT().CreateOrUpdate(gomock.Any(), "custom-rg", "custom-disk", gomock.Any()).
+					DoAndReturn(func(_ context.Context, _, _ string, model armcompute.Disk) (*armcompute.Disk, error) {
+						require.NotNil(t, model.SKU)
+						assert.Equal(t, to.Ptr(armcompute.DiskStorageAccountTypesPremiumV2LRS), model.SKU.Name)
+						require.NotNil(t, model.Properties)
+						assert.Equal(t, to.Ptr(expectedIOPS), model.Properties.DiskIOPSReadWrite)
+						assert.Equal(t, to.Ptr(expectedMBps), model.Properties.DiskMBpsReadWrite)
+						return disk, nil
+					})
+				resp, err := d.CreateVolume(context.Background(), &csi.CreateVolumeRequest{
+					Name: testVolumeName, VolumeCapabilities: stdVolumeCapabilities,
+					CapacityRange: &csi.CapacityRange{RequiredBytes: volumehelper.GiBToBytes(10)},
+					Parameters:    parameters, MutableParameters: mutableParameters,
+				})
+				require.NoError(t, err)
+				require.NotNil(t, resp)
+				assert.Equal(t, id, resp.Volume.VolumeId)
+				assert.Equal(t, originalParameters, parameters)
+			})
+		}
+	}
+}
+
+func TestControllerModifyVolumeMutableParameters(t *testing.T) {
+	for _, skuKey := range []string{"SKUName", "StorageAccountType", ""} {
+		t.Run(skuKey, func(t *testing.T) {
+			cntl := gomock.NewController(t)
+			d, err := NewFakeDriver(cntl)
+			require.NoError(t, err)
+			disk := &armcompute.Disk{
+				ID: to.Ptr(testVolumeID),
+				SKU: &armcompute.DiskSKU{
+					Name: to.Ptr(armcompute.DiskStorageAccountTypesStandardSSDLRS),
+				},
+				Properties: &armcompute.DiskProperties{DiskSizeGB: to.Ptr(int32(10))},
+			}
+			diskClient := mock_diskclient.NewMockInterface(cntl)
+			d.getClientFactory().(*mock_azclient.MockClientFactory).EXPECT().
+				GetDiskClientForSub("subs").Return(diskClient, nil).AnyTimes()
+			diskClient.EXPECT().Get(gomock.Any(), "rg", testVolumeName).Return(disk, nil).AnyTimes()
+
+			var parameters map[string]string
+			if skuKey != "" {
+				parameters = map[string]string{
+					skuKey:              "PremiumV2_LRS",
+					"DiskIOPSReadWrite": "5000",
+					"DiskMBpsReadWrite": "300",
+				}
+				diskClient.EXPECT().Patch(gomock.Any(), "rg", testVolumeName, gomock.Any()).
+					DoAndReturn(func(_ context.Context, _, _ string, model armcompute.DiskUpdate) (*armcompute.Disk, error) {
+						require.NotNil(t, model.SKU)
+						assert.Equal(t, to.Ptr(armcompute.DiskStorageAccountTypesPremiumV2LRS), model.SKU.Name)
+						require.NotNil(t, model.Properties)
+						assert.Equal(t, to.Ptr(int64(5000)), model.Properties.DiskIOPSReadWrite)
+						assert.Equal(t, to.Ptr(int64(300)), model.Properties.DiskMBpsReadWrite)
+						return disk, nil
+					})
+			}
+			req := &csi.ControllerModifyVolumeRequest{VolumeId: testVolumeID, MutableParameters: parameters}
+			original := req.String()
+			resp, err := d.ControllerModifyVolume(context.Background(), req)
+			require.NoError(t, err)
+			assert.NotNil(t, resp)
+			assert.Equal(t, original, req.String())
+		})
+	}
+}
+
 func TestCreateVolume(t *testing.T) {
 	testCases := []struct {
 		name     string
