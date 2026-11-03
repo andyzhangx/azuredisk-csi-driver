@@ -19,6 +19,7 @@ package e2e
 import (
 	"fmt"
 	"os"
+	"strings"
 
 	"sigs.k8s.io/azuredisk-csi-driver/test/e2e/driver"
 	"sigs.k8s.io/azuredisk-csi-driver/test/e2e/testsuites"
@@ -909,6 +910,7 @@ func (t *dynamicProvisioningTestSuite) defineTests(isMultiZone bool) {
 
 	ginkgo.It("should create a pod with multiple volumes [kubernetes.io/azure-disk] [disk.csi.azure.com] [Windows]", func(ctx ginkgo.SpecContext) {
 		volumes := []testsuites.VolumeDetails{}
+		var writes, reads []string
 		for i := 1; i <= 3; i++ {
 			volume := testsuites.VolumeDetails{
 				ClaimSize: "10Gi",
@@ -919,11 +921,22 @@ func (t *dynamicProvisioningTestSuite) defineTests(isMultiZone bool) {
 				VolumeAccessMode: v1.ReadWriteOnce,
 			}
 			volumes = append(volumes, volume)
+			if isWindowsCluster {
+				writes = append(writes, fmt.Sprintf("Set-Content -Path C:\\mnt\\test-%d\\data.txt -Value 'volume-%d' -ErrorAction Stop", i, i))
+				reads = append(reads, fmt.Sprintf("if ((Get-Content -Path C:\\mnt\\test-%d\\data.txt -Raw -ErrorAction Stop).Trim() -ne 'volume-%d') { throw 'Data mismatch on volume %d' }", i, i, i))
+			} else {
+				writes = append(writes, fmt.Sprintf("echo 'volume-%d' > /mnt/test-%d/data", i, i))
+				reads = append(reads, fmt.Sprintf("test \"$(cat /mnt/test-%d/data)\" = 'volume-%d'", i, i))
+			}
+		}
+		command := strings.Join(append(writes, reads...), " && ")
+		if isWindowsCluster {
+			command = strings.Join(append(writes, reads...), "; ")
 		}
 
 		pods := []testsuites.PodDetails{
 			{
-				Cmd:          convertToPowershellorCmdCommandIfNecessary("echo 'hello world' > /mnt/test-1/data && grep 'hello world' /mnt/test-1/data"),
+				Cmd:          command,
 				Volumes:      t.normalizeVolumes(volumes, isMultiZone),
 				IsWindows:    isWindowsCluster,
 				WinServerVer: winServerVer,

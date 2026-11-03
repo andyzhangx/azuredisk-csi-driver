@@ -22,11 +22,13 @@ import (
 	"strconv"
 	"strings"
 
+	"sigs.k8s.io/azuredisk-csi-driver/pkg/azureutils"
 	"sigs.k8s.io/azuredisk-csi-driver/test/e2e/driver"
 	"sigs.k8s.io/azuredisk-csi-driver/test/utils/azure"
 	"sigs.k8s.io/azuredisk-csi-driver/test/utils/credentials"
 
 	"github.com/onsi/ginkgo/v2"
+	"github.com/onsi/gomega"
 	"k8s.io/apimachinery/pkg/util/uuid"
 
 	v1 "k8s.io/api/core/v1"
@@ -59,6 +61,11 @@ func (t *DynamicallyProvisionedExternalRgVolumeTest) Run(ctx context.Context, cl
 	framework.ExpectNoError(err)
 	var externalRG string
 	var externalRGList []string
+	type externalClaim struct {
+		pvc           *TestPersistentVolumeClaim
+		resourceGroup string
+	}
+	var claims []externalClaim
 	defer func() {
 		for _, rgName := range externalRGList {
 			// Only delete resource group the test created
@@ -84,14 +91,15 @@ func (t *DynamicallyProvisionedExternalRgVolumeTest) Run(ctx context.Context, cl
 			_, err = azureClient.EnsureResourceGroup(ctx, externalRG, creds.Location, nil)
 			framework.ExpectNoError(err)
 			externalRGList = append(externalRGList, externalRG)
-			storageClassParams["resourceGroup"] = externalRG
 		}
+		storageClassParams["resourceGroup"] = externalRG
 
 		ginkgo.By("creating volume in external rg " + externalRG)
 		tpvc, pvcCleanup := volume.SetupDynamicPersistentVolumeClaim(ctx, client, namespace, t.CSIDriver, storageClassParams)
 		for i := range pvcCleanup {
 			defer pvcCleanup[i](ctx)
 		}
+		claims = append(claims, externalClaim{pvc: tpvc, resourceGroup: externalRG})
 		tpod.SetupVolume(tpvc.persistentVolumeClaim, volume.VolumeMount.NameGenerate+strconv.Itoa(i+1), volume.VolumeMount.MountPathGenerate+strconv.Itoa(i+1), volume.VolumeMount.ReadOnly)
 	}
 
@@ -100,4 +108,19 @@ func (t *DynamicallyProvisionedExternalRgVolumeTest) Run(ctx context.Context, cl
 	defer tpod.Cleanup(ctx)
 	ginkgo.By("checking that the pod's command exits with no error")
 	tpod.WaitForSuccess(ctx)
+
+	ginkgo.By("verifying each disk was provisioned in its requested external resource group")
+	for _, claim := range claims {
+		claim.pvc.WaitForBound(ctx)
+		claim.pvc.ValidateProvisionedPersistentVolume(ctx)
+		pv := claim.pvc.persistentVolume
+		gomega.Expect(pv.Spec.CSI).NotTo(gomega.BeNil(), "external resource group test requires a CSI PV")
+		diskURI := pv.Spec.CSI.VolumeHandle
+		subscriptionID, resourceGroup, _, err := azureutils.GetInfoFromURI(diskURI)
+		framework.ExpectNoError(err, "parsing disk URI for PV %s", pv.Name)
+		gomega.Expect(strings.EqualFold(subscriptionID, creds.SubscriptionID)).To(gomega.BeTrue(),
+			"disk %s must be in subscription %s", diskURI, creds.SubscriptionID)
+		gomega.Expect(strings.EqualFold(resourceGroup, claim.resourceGroup)).To(gomega.BeTrue(),
+			"disk %s must be in external resource group %s", diskURI, claim.resourceGroup)
+	}
 }
