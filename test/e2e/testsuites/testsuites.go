@@ -1211,11 +1211,14 @@ func ListNodeNames(ctx context.Context, c clientset.Interface) []string {
 }
 
 func getWinImageTag(winServerVer string) string {
-	testWinImageTag := "ltsc2019"
-	if winServerVer == "windows-2022" {
-		testWinImageTag = "ltsc2022"
+	switch winServerVer {
+	case "windows-2022":
+		return "ltsc2022"
+	case "windows-2025":
+		return "ltsc2025"
+	default:
+		return "ltsc2019"
 	}
-	return testWinImageTag
 }
 
 func pollForStringWorker(namespace string, pod string, command []string, expectedString string, ch chan<- error) {

@@ -193,7 +193,7 @@ var _ = ginkgo.AfterSuite(func(_ ginkgo.SpecContext) {
 		cloud := "azurepubliccloud"
 		if isWindowsCluster {
 			os = "windows"
-			if winServerVer == "windows-2022" {
+			if winServerVer == "windows-2022" || winServerVer == "windows-2025" {
 				os = winServerVer
 			}
 		}

@@ -69,11 +69,15 @@ if [[ "$1" == "linux" ]]; then
     fi
 fi
 
-if ! [[ "$1" == *"windows-2022"* ]]; then
-    echo "switch to use ltsc2019 image in example test"
-    sed -i 's/ltsc2022/ltsc2019/g' deploy/example/windows/deployment.yaml
-    sed -i 's/ltsc2022/ltsc2019/g' deploy/example/windows/statefulset.yaml
-fi
+case "$1" in
+    *windows-2025*) WINDOWS_IMAGE_TAG=ltsc2025 ;;
+    *windows-2022*) WINDOWS_IMAGE_TAG=ltsc2022 ;;
+    *) WINDOWS_IMAGE_TAG=ltsc2019 ;;
+esac
+echo "use ${WINDOWS_IMAGE_TAG} image in example test"
+sed -i -E "s/ltsc20(19|22|25)/${WINDOWS_IMAGE_TAG}/g" \
+    deploy/example/windows/deployment.yaml \
+    deploy/example/windows/statefulset.yaml
 
 if [[ "$1" == *"windows"* ]]; then
     # skip Windows statefulset example to improve CI stability (StatefulSet pod
