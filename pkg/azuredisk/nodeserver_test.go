@@ -521,6 +521,10 @@ func TestNodeGetInfoTopologyFromMetadata(t *testing.T) {
 				{name: "empty metadata fields", metadata: `{"compute":{"location":"centralus","zone":"","platformFaultDomain":""}}`, code: codes.Unavailable},
 				{name: "invalid zone", metadata: `{"compute":{"location":"centralus","zone":"invalid"}}`, code: codes.Unavailable},
 				{name: "missing compute", metadata: `{}`, code: codes.Unavailable},
+				{name: "missing location", metadata: `{"compute":{"zone":"2"}}`, code: codes.Unavailable},
+				{name: "missing location with label", metadata: `{"compute":{"zone":"2"}}`, label: "centralus-3", zone: "centralus-3"},
+				{name: "negative fault domain", metadata: `{"compute":{"location":"centralus","platformFaultDomain":"-1"}}`, code: codes.Unavailable},
+				{name: "invalid fault domain", metadata: `{"compute":{"location":"centralus","platformFaultDomain":"unknown"}}`, code: codes.Unavailable},
 				{name: "metadata unavailable", httpStatus: http.StatusServiceUnavailable, code: codes.Unavailable},
 				{name: "metadata unauthorized", httpStatus: http.StatusUnauthorized, code: codes.Unavailable},
 				{name: "incomplete metadata with label", metadata: `{"compute":{"location":"centralus"}}`, label: "centralus-3", zone: "centralus-3"},
@@ -574,6 +578,9 @@ func TestNodeGetInfoTopologyFromARM(t *testing.T) {
 			{name: "non-zonal zero", failureDomain: "0"},
 			{name: "non-zonal one", failureDomain: "1"},
 			{name: "incomplete", code: codes.Unavailable},
+			{name: "missing location", failureDomain: "-2", code: codes.Unavailable},
+			{name: "negative fault domain", failureDomain: "-1", code: codes.Unavailable},
+			{name: "invalid fault domain", failureDomain: "unknown", code: codes.Unavailable},
 		} {
 			t.Run(fmt.Sprintf("fromLabels=%t/%s", fromLabels, tc.name), func(t *testing.T) {
 				ctrl := gomock.NewController(t)

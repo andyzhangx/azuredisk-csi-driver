@@ -890,7 +890,13 @@ func (d *Driver) NodeGetInfo(ctx context.Context, _ *csi.NodeGetInfoRequest) (*c
 		}
 		if !d.getNodeInfoFromLabels || (failureDomainFromLabels == "" && cloudConfigured) {
 			zone, cloudErr = d.getNodeTopologyZone(ctx)
-			if cloudErr != nil || zone.FailureDomain == "" {
+			// A nonempty cloud result is not necessarily ready: IMDS can return
+			// a zone without a location ("-2"). Only an availability zone or a
+			// nonnegative numeric fault domain establishes the VM's topology.
+			faultDomain, faultDomainErr := strconv.Atoi(zone.FailureDomain)
+			cloudTopologyReady := azureutils.IsValidAvailabilityZone(zone.FailureDomain, d.cloud.Location) ||
+				(faultDomainErr == nil && faultDomain >= 0)
+			if cloudErr != nil || !cloudTopologyReady {
 				// Do not use partial results returned together with a cloud error.
 				zone = cloudprovider.Zone{}
 				// Also consult labels after a successful but incomplete cloud response.
