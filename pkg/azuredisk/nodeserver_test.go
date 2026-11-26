@@ -52,6 +52,7 @@ import (
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/client-go/kubernetes/fake"
 	clienttesting "k8s.io/client-go/testing"
+	cloudprovider "k8s.io/cloud-provider"
 	"k8s.io/mount-utils"
 	testingexec "k8s.io/utils/exec/testing"
 	"k8s.io/utils/ptr"
@@ -467,7 +468,20 @@ func TestNodeGetInfoTopologyReadiness(t *testing.T) {
 				t.Run(tc.name, func(t *testing.T) {
 					d := &Driver{supportZone: true, getNodeInfoFromLabels: fromLabels, cloud: &azure.Cloud{}}
 					d.NodeID = "node1"
-					// No VMSet: the cloud lookup fails, exercising the label fallback.
+					if !fromLabels {
+						mockVMSet := azure.NewMockVMSet(gomock.NewController(t))
+						d.cloud.VMSet = mockVMSet
+						// Windows queries the node ID directly; GetZone uses the local hostname elsewhere.
+						nodeName := d.NodeID
+						if runtime.GOOS != "windows" {
+							hostname, err := os.Hostname()
+							require.NoError(t, err)
+							nodeName = strings.ToLower(hostname)
+						}
+						// Explicitly fail the cloud lookup to exercise the label fallback on every OS.
+						mockVMSet.EXPECT().GetZoneByNodeName(gomock.Any(), nodeName).
+							Return(cloudprovider.Zone{}, errors.New("zone lookup failed"))
+					}
 					d.cloud.KubeClient = fake.NewClientset(&corev1.Node{ObjectMeta: metav1.ObjectMeta{Name: d.NodeID, Labels: tc.labels}})
 					resp, err := d.NodeGetInfo(context.Background(), &csi.NodeGetInfoRequest{})
 					require.Equal(t, tc.code, status.Code(err), "error: %v", err)
