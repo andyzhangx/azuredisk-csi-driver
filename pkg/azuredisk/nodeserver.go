@@ -878,6 +878,12 @@ func (d *Driver) NodeGetInfo(ctx context.Context, _ *csi.NodeGetInfoRequest) (*c
 		if zone.FailureDomain == "" {
 			zone.FailureDomain = failureDomainFromLabels
 		}
+		if zone.FailureDomain == "" {
+			// Missing topology is not evidence that this is a non-zonal node.
+			// Let kubelet retry registration once cloud metadata or node labels
+			// are available, rather than permanently publishing an empty zone.
+			return nil, status.Errorf(codes.Unavailable, "topology is not initialized for node(%s): no failure domain in cloud metadata or node label %s", d.NodeID, consts.WellKnownTopologyKey)
+		}
 
 		klog.V(2).Infof("NodeGetInfo, nodeName: %s, failureDomain: %s", d.NodeID, zone.FailureDomain)
 		if azureutils.IsValidAvailabilityZone(zone.FailureDomain, d.cloud.Location) {
