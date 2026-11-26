@@ -857,6 +857,12 @@ func (d *Driver) getNodeTopologyZone(ctx context.Context) (cloudprovider.Zone, e
 		if d.cloud.Metadata == nil {
 			return cloudprovider.Zone{}, fmt.Errorf("instance metadata client is not initialized")
 		}
+		// GetZone uses an unsafe cache read that ignores expiry. Refresh expired
+		// metadata first so registration retries can observe IMDS recovery even
+		// when incomplete topology bypasses later metadata reads in NodeGetInfo.
+		if _, err := d.cloud.Metadata.GetMetadata(ctx, azcache.CacheReadTypeDefault); err != nil {
+			return cloudprovider.Zone{}, err
+		}
 	} else {
 		if d.cloud.VMSet == nil || d.cloud.ComputeClientFactory == nil {
 			return cloudprovider.Zone{}, fmt.Errorf("cloud VMSet or compute client is not initialized")

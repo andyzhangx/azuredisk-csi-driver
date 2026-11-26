@@ -34,6 +34,8 @@ import (
 	"sync/atomic"
 	"syscall"
 	"testing"
+	"testing/synctest"
+	"time"
 
 	"github.com/Azure/azure-sdk-for-go/sdk/azcore"
 	"github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/compute/armcompute/v7"
@@ -65,6 +67,7 @@ import (
 	"sigs.k8s.io/azuredisk-csi-driver/test/utils/testutil"
 	"sigs.k8s.io/cloud-provider-azure/pkg/azclient/mock_azclient"
 	mockvmclient "sigs.k8s.io/cloud-provider-azure/pkg/azclient/virtualmachineclient/mock_virtualmachineclient"
+	azureconsts "sigs.k8s.io/cloud-provider-azure/pkg/consts"
 	azure "sigs.k8s.io/cloud-provider-azure/pkg/provider"
 )
 
@@ -565,6 +568,61 @@ func TestNodeGetInfoTopologyFromMetadata(t *testing.T) {
 				})
 			}
 		})
+	}
+}
+
+// Advance the real provider cache's TTL in virtual time, without replacing the
+// metadata client or requiring a minute-long sleep or a live IMDS endpoint.
+func TestNodeGetInfoTopologyMetadataCacheRecovery(t *testing.T) {
+	for _, fromLabels := range []bool{false, true} {
+		for _, recoveredMetadata := range []string{
+			`{"compute":{"location":"centralus","zone":"2"}}`,
+			`{"compute":{"location":"centralus","platformFaultDomain":"0"}}`,
+		} {
+			t.Run(fmt.Sprintf("fromLabels=%t/%s", fromLabels, recoveredMetadata), func(t *testing.T) {
+				synctest.Test(t, func(t *testing.T) {
+					calls := 0
+					body := `{"compute":{"location":"centralus"}}`
+					originalTransport := http.DefaultTransport
+					http.DefaultTransport = testRoundTripper(func(req *http.Request) (*http.Response, error) {
+						calls++
+						return &http.Response{StatusCode: http.StatusOK, Body: io.NopCloser(strings.NewReader(body)), Header: make(http.Header), Request: req}, nil
+					})
+					defer func() { http.DefaultTransport = originalTransport }()
+					metadata, err := azure.NewInstanceMetadataService("http://imds.test")
+					require.NoError(t, err)
+					d := &Driver{supportZone: true, getNodeInfoFromLabels: fromLabels, cloud: &azure.Cloud{}}
+					d.NodeID = "node1"
+					d.cloud.UseInstanceMetadata = true
+					d.cloud.Metadata = metadata
+					d.cloud.KubeClient = fake.NewClientset(&corev1.Node{ObjectMeta: metav1.ObjectMeta{
+						Name: d.NodeID, Labels: map[string]string{consts.InstanceTypeKey: "Standard_E8s_v3"},
+					}})
+					ctx := context.Background()
+					resp, err := d.NodeGetInfo(ctx, &csi.NodeGetInfoRequest{})
+					require.Equal(t, codes.Unavailable, status.Code(err))
+					require.Nil(t, resp)
+					require.Equal(t, 1, calls)
+
+					body = recoveredMetadata
+					// Retries before expiry still use the incomplete cached response.
+					resp, err = d.NodeGetInfo(ctx, &csi.NodeGetInfoRequest{})
+					require.Equal(t, codes.Unavailable, status.Code(err))
+					require.Nil(t, resp)
+					require.Equal(t, 1, calls)
+
+					time.Sleep(azureconsts.MetadataCacheTTL + time.Second)
+					resp, err = d.NodeGetInfo(ctx, &csi.NodeGetInfoRequest{})
+					require.NoError(t, err)
+					require.Equal(t, 2, calls, "expired metadata must be refreshed by topology lookup")
+					want := map[string]string{topologyKey: ""}
+					if strings.Contains(recoveredMetadata, `"zone":"2"`) {
+						want = map[string]string{topologyKey: "centralus-2", consts.WellKnownTopologyKey: "centralus-2"}
+					}
+					require.Equal(t, want, resp.AccessibleTopology.Segments)
+				})
+			})
+		}
 	}
 }
 
